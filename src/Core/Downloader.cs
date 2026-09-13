@@ -112,9 +112,17 @@ public sealed class Downloader : IAsyncDisposable
             var file = System.IO.Directory.GetFiles(work, "media.*").FirstOrDefault(f => Path.GetExtension(f) == (j.Mode == DownloadMode.Mp3 ? ".mp3" : ".mp4")) ?? throw new IOException("下載完成但找不到輸出檔案");
             if (j.Mode == DownloadMode.Mp3)
             {
-                var doc = Id3Document.Read(file); doc.SetText("TIT2", j.Title); doc.SetText("TPE1", j.Artist); doc.SetText("TALB", j.Album);
+                var doc = Id3Document.Read(file);
                 var covers = new List<Cover>();
-                if (Settings.MusicBrainz) { var front = await music.Find(j.Title, j.Artist, ct); if (front is not null) covers.Add(front); }
+                if (Settings.MusicBrainz) {
+                    j.MetadataStatus = "MusicBrainz：正在查詢歌曲及專輯封面…"; store.Save(j);
+                    var metadata = await music.Lookup(j.Title, j.Artist, j.Duration, ct);
+                    j.MetadataStatus = metadata.Message; j.MetadataCheckedAt = DateTimeOffset.UtcNow;
+                    if (!j.IsUserEdited) { if (metadata.Title is { Length: > 0 }) j.Title = metadata.Title; if (metadata.Artist is { Length: > 0 }) j.Artist = metadata.Artist; if (metadata.Album is { Length: > 0 }) j.Album = metadata.Album; }
+                    if (metadata.Cover is not null) covers.Add(metadata.Cover);
+                    store.Save(j);
+                } else j.MetadataStatus = "MusicBrainz：已在設定關閉";
+                doc.SetText("TIT2", j.Title); doc.SetText("TPE1", j.Artist); doc.SetText("TALB", j.Album);
                 if (info.Thumbnail is not null) { try { var thumb = await MusicMetadata.Fetch(info.Thumbnail, "Video thumbnail", covers.Count == 0 ? (byte)3 : (byte)0, ct); if (thumb is not null) covers.Add(thumb); } catch (HttpRequestException) { } }
                 if (covers.Count > 0) doc.SetCovers(covers);
                 var tagged = file + ".tagged"; if (File.Exists(tagged)) File.Delete(tagged); await doc.Write(file, tagged, ct); File.Move(tagged, file, true);

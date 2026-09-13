@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -15,7 +15,7 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--library-regression"))
+        if (args.Contains("--library-regression") || args.Contains("--update-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
@@ -26,6 +26,7 @@ public static class Program
             }
             var p=store.Preferences();p.Mp3Directory=Path.Combine(output,"music");p.Mp4Directory=Path.Combine(output,"video");store.SavePreferences(p);
         }
+        if (args.Contains("--update-regression")) { store.Save(new DownloadJob{Id="paused",Title="暫停測試",State=JobState.Paused}); store.Save(new DownloadJob{Id="failed",Title="失敗測試",State=JobState.Failed}); }
         var engine = new Downloader(store, Path.GetFullPath(args[1]), Path.Combine(output, "smoke-work"));
         var window = new MainWindow(engine, store) { AllowClose = true, ShowInTaskbar = false, Left = -10000, Top = -10000, WindowStartupLocation = WindowStartupLocation.Manual };
         app.DispatcherUnhandledException += (_, e) => { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.Exception.ToString()); e.Handled = true; app.Shutdown(1); };
@@ -37,15 +38,22 @@ public static class Program
             {
                 await app.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 Capture(window, Path.Combine(output, "windows-empty.png"));
+                if (args.Contains("--music-smoke")) {
+                    var result=await new MusicMetadata().Lookup("Radiohead - Creep (Official Music Video)","",238,CancellationToken.None);
+                    File.WriteAllText(Path.Combine(output,"musicbrainz-live.json"),Json.Encode(new{result.State,result.Title,result.Artist,result.Album,coverBytes=result.Cover?.Bytes.Length}));
+                    if(result.Cover is not null) { var source=Path.Combine(output,"cover-test.mp3");await ProcessRunner.Run(Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),["-y","-f","lavfi","-i","sine=frequency=440:duration=2",source],null,CancellationToken.None);var doc=Id3Document.Read(source);doc.SetText("TIT2",result.Title!);doc.SetCovers([result.Cover,new(File.ReadAllBytes(Path.Combine(Environment.CurrentDirectory,"src/Windows/Assets/brand.png")),"image/png","Test secondary",0)]);await doc.Write(source,Path.Combine(output,"dual-cover-test.mp3"));var read=Id3Document.Read(Path.Combine(output,"dual-cover-test.mp3"));if(read.Frames.Count(f=>f.Id=="APIC")!=2)throw new Exception("Dual cover embedding failed"); }
+                    await engine.DisposeAsync();window.Close();app.Shutdown(result.State==MusicLookupState.Matched?0:3);return;
+                }
+                if (args.Contains("--update-regression")) { await CheckUpdate(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--library-regression")) { await CheckLibrary(window,engine,store,app,output); await engine.DisposeAsync(); window.AllowClose=true; window.Close(); app.Shutdown(0); return; }
                 if (args.Contains("--ui-regression")) { await CheckUi(window, app, output); await engine.DisposeAsync(); window.AllowClose=true; window.Close(); app.Shutdown(0); return; }
                 if (args.Contains("--render-only")) { Capture(window, Path.Combine(output, "windows-desktop.png")); await engine.DisposeAsync(); window.Close(); app.Shutdown(0); return; }
-                var p = engine.Settings; p.DownloadDirectory = Path.Combine(output, "media"); engine.SaveSettings(p);
+                var p = engine.Settings; p.DownloadDirectory = Path.Combine(output, "media"); p.MusicBrainz=args.Contains("--music-download-smoke"); engine.SaveSettings(p);
                 await engine.Accept(new(Guid.NewGuid().ToString(), "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4", "mp3"));
                 await engine.Accept(new(Guid.NewGuid().ToString(), "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4", "mp4"));
                 using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
                 while (engine.Jobs.Any(j => j.State is not (JobState.Completed or JobState.Failed or JobState.Cancelled))) await Task.Delay(500, timeout.Token);
-                var results = engine.Jobs.Select(j => new { j.State, j.FilePath, j.Error, j.Stderr }).ToArray(); File.WriteAllText(Path.Combine(output, "download-smoke.json"), Json.Encode(results));
+                var results = engine.Jobs.Select(j => new { j.State, j.FilePath, j.Error, j.Stderr, j.MetadataStatus, j.MetadataCheckedAt }).ToArray(); File.WriteAllText(Path.Combine(output, "download-smoke.json"), Json.Encode(results));
                 await Task.Delay(700); Capture(window, Path.Combine(output, "windows-download.png"));
                 await engine.DisposeAsync(); window.Close(); app.Shutdown(engine.Jobs.All(j => j.State == JobState.Completed) ? 0 : 2);
             }
@@ -62,7 +70,7 @@ public static class Program
         void Check(bool valid,string reason) { if(!valid) throw new Exception(reason); }
         T Find<T>(string name) => (T)window.FindName(name);
         void Click(string name) => Find<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var grid=Find<DataGrid>("JobGrid"); grid.SelectedIndex=0;
+        window.OpenHistory(); var grid=Find<DataGrid>("JobGrid"); grid.SelectedIndex=0;
         var url=Find<TextBox>("UrlBox"); var full="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared"; url.Text=full;
         window.ApplyPreview(new("介面測試 · 完整縮圖與深藍選取","","",null,240,[new("mp4",1080,true,false,60_000_000,2000),new("mp4",720,true,false,30_000_000,1000),new("m4a",null,false,true,4_000_000,128)]));
         var thumb=Find<System.Windows.Controls.Image>("Thumbnail"); var drawing=new DrawingVisual(); using(var dc=drawing.RenderOpen()){dc.DrawRectangle(Brushes.DarkSlateBlue,null,new Rect(0,0,640,360));dc.DrawRectangle(Brushes.MediumPurple,null,new Rect(0,0,80,80));dc.DrawRectangle(Brushes.DeepSkyBlue,null,new Rect(560,0,80,80));dc.DrawRectangle(Brushes.Turquoise,null,new Rect(0,280,80,80));dc.DrawRectangle(Brushes.Orange,null,new Rect(560,280,80,80));} var bitmap=new RenderTargetBitmap(640,360,96,96,PixelFormats.Pbgra32);bitmap.Render(drawing);thumb.Source=bitmap;
@@ -119,4 +127,42 @@ public static class Program
         Capture(window,Path.Combine(output,"windows-library.png"));
         File.WriteAllText(Path.Combine(output,"library-checks.json"),Json.Encode(new{passed=true,checks=new[]{"recent selection survives timer","folder button and native Shell call","tag section","invalid Title guard","real MP3 ID3 and rename","engine path refresh","fixed batch tracks without rename","MP3/MP4 filters with AND search","separate directories","4K cap and unavailable quality removal"}}));
     }
+    static async Task CheckUpdate(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output)
+    {
+        void Check(bool valid,string reason){if(!valid)throw new Exception(reason);}
+        T Find<T>(string name)=>(T)window.FindName(name);
+        void Click(string name)=>Find<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var grid=Find<DataGrid>("JobGrid");
+        Check(grid.Items.Count==1&&((DownloadJob)grid.Items[0]).State==JobState.Paused,"Completed/failed tasks remained in active queue");
+        Check(Find<DataGrid>("RecentGrid").Items.Count==3,"Completed tasks missing from recent downloads");
+        Click("FailedButton");Check(grid.Items.Count==1&&((DownloadJob)grid.Items[0]).State==JobState.Failed,"Failed tasks are not accessible");Click("FailedButton");
+        Click("HistoryNav");Check(grid.Items.Count==3,"History missing completed tasks");
+        void ConfirmAction(string button,bool accept,string expected,Action? during=null)
+        {
+            Exception? failure=null;
+            app.Dispatcher.BeginInvoke(new Action(()=>{
+                var dialog=window.OwnedWindows.OfType<ConfirmWindow>().Single();
+                try {
+                    Check(dialog.WindowStyle==WindowStyle.None&&((SolidColorBrush)dialog.Background).Color!=Colors.White,"Confirmation is white/native");
+                    Check(Descendants(dialog).OfType<TextBlock>().Single(t=>t.Name=="ConfirmationMessage").Text.Contains(expected),"Confirmation count/file is wrong");
+                    Capture(dialog,Path.Combine(output,button+"-dialog.png"));during?.Invoke();
+                    Descendants(dialog).OfType<Button>().Single(b=>b.Name==(accept?"AcceptConfirmation":"CancelConfirmation")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }catch(Exception ex){failure=ex;dialog.Close();}
+            }),DispatcherPriority.ApplicationIdle);
+            Click(button);if(failure is not null)throw failure;
+        }
+        Find<ComboBox>("FormatFilter").SelectedIndex=1;
+        ConfirmAction("ClearButton",false,"2 筆");Check(store.Load(true).Count(j=>j.State==JobState.Completed)==3,"Cancel cleared history");
+        ConfirmAction("ClearButton",true,"2 筆",()=>store.Save(new DownloadJob{Id="new-after-prompt",State=JobState.Completed,Mode=DownloadMode.Mp3,Title="new arrival"}));
+        Check(store.Load(true).Any(j=>j.Id=="new-after-prompt"),"Clear removed a record added after confirmation opened");
+        Check(File.Exists(Path.Combine(output,"music-a.mp3"))&&File.Exists(Path.Combine(output,"music-b.mp3")),"History clear deleted media");
+        Find<ComboBox>("FormatFilter").SelectedIndex=2;grid.SelectedIndex=0;await Task.Delay(650);
+        window.RecycleFile=path=>File.Move(path,path+".test-trash");ConfirmAction("DeleteFileButton",false,"video.mp4");Check(File.Exists(Path.Combine(output,"video.mp4")),"Cancel deleted a file");
+        ConfirmAction("DeleteFileButton",true,"video.mp4");Check(!File.Exists(Path.Combine(output,"video.mp4"))&&File.Exists(Path.Combine(output,"video.mp4.test-trash")),"Selected file deletion failed");
+        Check(File.Exists(Path.Combine(output,"music-a.mp3")),"Unselected file was deleted");Check(!store.Load(true).Any(j=>j.Id=="video"),"Deleted file remained in history");
+        Check(!Find<Button>("ClearButton").IsEnabled,"Empty history clear button remains enabled");
+        var probe=Path.Combine(output,"recycle-probe.txt");File.WriteAllText(probe,"Disposable recycle API test");ShellFiles.Recycle(probe);Check(!File.Exists(probe),"Native recycle API failed");
+        File.WriteAllText(Path.Combine(output,"update-checks.json"),Json.Encode(new{passed=true,checks=new[]{"active queue excludes completed and failed","recent and history retain completed","separate failure view","dark confirmation","clear cancellation","clear snapshot count","clear keeps files","delete cancellation","delete only selected file","empty clear disabled","native recycle API"}}));
+    }
+
 }

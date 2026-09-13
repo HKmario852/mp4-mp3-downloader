@@ -12,7 +12,7 @@ import java.util.UUID
     val path: String? = null, val targetTree: String? = null, val directory: String = "", val bytes: Long = 0, val total: Long? = null,
     val progress: Float = 0f, val speed: Double = 0.0, val eta: Long = 0,
     val retry: Int = 0, val retryAt: Long = 0, val error: String? = null, val stderr: String? = null,
-    val isUserEdited: Boolean = false, val history: Boolean = true,
+    val metadataStatus: String = "", val isUserEdited: Boolean = false, val history: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(), val completedAt: Long? = null
 )
 @Serializable data class PlaylistGroup(val id: String = UUID.randomUUID().toString(), val title: String, val discoveryComplete: Boolean = false, val discoveryFailures: Int = 0, val notified: Boolean = false)
@@ -24,6 +24,7 @@ class SessionGrants {
     fun mayUseCellular(id: String) = cellularAll || id in tasks
 }
 object Rules {
+    fun inQueue(t: TaskItem) = t.state in listOf(State.PendingChoice,State.Queued,State.Analyzing,State.Downloading,State.Processing,State.RetryWait,State.Paused)
     private val forbidden = Regex("[\\\\/:*?\"<>|\\x00-\\x1f]")
     private val reserved = Regex("^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\.|$)", RegexOption.IGNORE_CASE)
     fun titleError(s: String): String? = when {

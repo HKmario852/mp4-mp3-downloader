@@ -3,6 +3,9 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
 class RulesTest {
+    @Test fun queueExcludesFinishedAndFailed(){listOf(State.Completed,State.Failed,State.Cancelled).forEach{assertFalse(Rules.inQueue(TaskItem(url="https://example.org",state=it)))};assertTrue(Rules.inQueue(TaskItem(url="https://example.org",state=State.Downloading)))}
+    @Test fun musicTitleInferenceKeepsJapanese(){val(name,artist)=Metadata.prepare("YOASOBI - 夜に駆ける (Official Music Video)","");assertEquals("夜に駆ける",name);assertEquals("YOASOBI",artist)}
+
     @Test fun separateDirectoriesPreserveLegacyFallback(){val old=Prefs(tree="content://legacy");assertEquals("content://legacy",old.treeFor("mp3"));val split=old.copy(mp3Tree="content://music",mp4Tree="content://video");assertEquals("content://music",split.treeFor("mp3"));assertEquals("content://video",split.treeFor("mp4"));assertEquals("",split.copy(mp3Tree="").treeFor("mp3"))}
 
     @Test fun rawFrameEditPreservesOtherInstances(){val file=File.createTempFile("omni-id3",".mp3");try{val tag=Id3.read(file);tag.setRaw("TXXX",byteArrayOf(0,1));tag.setRaw("TXXX#1",byteArrayOf(0,2));tag.setRaw("TXXX",byteArrayOf(0,3));assertArrayEquals(byteArrayOf(0,2),tag.frames[1].data)}finally{file.delete()}}

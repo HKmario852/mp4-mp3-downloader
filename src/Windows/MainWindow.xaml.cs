@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,9 +9,10 @@ using Omni.Core;
 namespace Omni.Windows;
 public partial class MainWindow : Window
 {
-    readonly Downloader engine; readonly Store store; readonly DispatcherTimer timer; readonly HashSet<string> choices = []; bool history, tagsPage, recentSelection, collapsed; DownloadMode mode = DownloadMode.Mp4; string groupSignature = "";
+    readonly Downloader engine; readonly Store store; readonly DispatcherTimer timer; readonly HashSet<string> choices = []; bool history, tagsPage, recentSelection, failures, collapsed; DownloadMode mode = DownloadMode.Mp4; string groupSignature = "";
     string? thumbnailUrl;
     bool refreshing;
+    string? previewJobId;
     MediaInfo? previewInfo;
     readonly Dictionary<string, MediaInfo> mediaCache = new();
     int analysisVersion;
@@ -42,7 +43,7 @@ public partial class MainWindow : Window
     {
         if (!IsInitialized) return;
         var selected = JobGrid.SelectedItems.Cast<DownloadJob>().Select(x => x.Id).ToHashSet();
-        var items = history ? store.Load(true).Where(j => j.State == JobState.Completed && !j.IsGroupRoot && MatchesLibrary(j)).OrderByDescending(j => j.CompletedAt).ToArray() : engine.Jobs.Where(j => !j.IsGroupRoot && j.GroupId is null).OrderByDescending(j => j.CreatedAt).ToArray();
+        var items = history ? store.Load(true).Where(j => j.State == JobState.Completed && !j.IsGroupRoot && MatchesLibrary(j)).OrderByDescending(j => j.CompletedAt).ToArray() : engine.Jobs.Where(j => !j.IsGroupRoot && j.GroupId is null && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).OrderByDescending(j => j.CreatedAt).ToArray();
         refreshing = true;
         try {
             JobGrid.ItemsSource = items; foreach (var j in items.Where(j => selected.Contains(j.Id))) JobGrid.SelectedItems.Add(j);
@@ -51,22 +52,29 @@ public partial class MainWindow : Window
             RecentGrid.ItemsSource = recent; foreach (var j in recent.Where(j => recentIds.Contains(j.Id))) RecentGrid.SelectedItems.Add(j);
         }
         finally { refreshing = false; }
-        EmptyPanel.Visibility = items.Length == 0 ? Visibility.Visible : Visibility.Collapsed; CountLabel.Text = $"({items.Length})"; PageTitle.Text = tagsPage ? "標籤編輯 · MP3" : history ? "已下載" : "下載任務";
+        EmptyPanel.Visibility = items.Length == 0 ? Visibility.Visible : Visibility.Collapsed; CountLabel.Text = $"({items.Length})"; PageTitle.Text = tagsPage ? "標籤編輯 · MP3" : history ? "已下載" : failures ? "下載失敗" : "下載任務";
         SearchBox.Visibility = ClearButton.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
+        ClearButton.IsEnabled = history && items.Length > 0;
+        DeleteFileButton.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
+        DeleteFileButton.IsEnabled = history && SelectedJobs().Length == 1 && SelectedJobs()[0].State == JobState.Completed;
+        FailedButton.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
+        FailedButton.Content = failures ? "返回下載任務" : $"失敗任務（{engine.Jobs.Count(j => j.State == JobState.Failed && !j.IsGroupRoot)}）";
+        if (previewJobId is string selectedId) { var selectedJob = engine.Jobs.FirstOrDefault(j => j.Id == selectedId); MetadataLabel.Text = selectedJob?.MetadataStatus ?? ""; }
         FormatFilter.Visibility = history && !tagsPage ? Visibility.Visible : Visibility.Collapsed;
         EditTagsButton.Visibility = history || RecentGrid.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         EmptyTitle.Text = tagsPage ? "尚未有符合條件的 MP3" : "將喜歡的影音收藏到這裡";
-        var groups = engine.Groups; var sig = string.Join(';', groups.Select(g => $"{g.Id}:{g.Title}:{engine.Jobs.Count(j => j.GroupId == g.Id)}"));
+        var groups = engine.Groups.Where(g => engine.Jobs.Any(j => j.GroupId == g.Id && !j.IsGroupRoot && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j)))).ToArray(); var sig = failures + ":" + string.Join(';', groups.Select(g => g.Id + ":" + g.Title + ":" + string.Join(',', engine.Jobs.Where(j => j.GroupId == g.Id && !j.IsGroupRoot && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).Select(j => j.Id))));
         if (groupSignature != sig)
         {
             groupSignature = sig; GroupCards.Children.Clear();
             foreach (var g in groups)
             {
-                var children = engine.Jobs.Where(j => j.GroupId == g.Id && !j.IsGroupRoot).ToArray(); var exp = new Expander { Header = $"清單 · {g.Title} ({children.Length})", Foreground = Foreground, Margin = new Thickness(3, 6, 3, 6) };
+                var children = engine.Jobs.Where(j => j.GroupId == g.Id && !j.IsGroupRoot && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).ToArray(); var exp = new Expander { Header = $"清單 · {g.Title} ({children.Length})", Foreground = Foreground, Margin = new Thickness(3, 6, 3, 6) };
                 var panel = new StackPanel(); var cancel = new Button { Content = "取消清單未完成下載" }; cancel.Click += async (_, _) => await engine.Cancel(engine.Jobs.Where(j => j.GroupId == g.Id).Select(j => j.Id)); panel.Children.Add(cancel);
                 var list = new ListBox { MaxHeight = 150, ItemsSource = children, Background = Background, Foreground = Foreground }; var template = new DataTemplate(); var stack = new FrameworkElementFactory(typeof(StackPanel)); var name = new FrameworkElementFactory(typeof(TextBlock)); name.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Title")); stack.AppendChild(name); var state = new FrameworkElementFactory(typeof(TextBlock)); state.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("StatusText")); state.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(106, 149, 255))); stack.AppendChild(state); template.VisualTree = stack; list.ItemTemplate = template; VirtualizingPanel.SetIsVirtualizing(list, true); VirtualizingPanel.SetVirtualizationMode(list, VirtualizationMode.Recycling); ScrollViewer.SetCanContentScroll(list, true); panel.Children.Add(list); exp.Content = panel; GroupCards.Children.Add(exp);
             }
         }
+        if (!history && groups.Length > 0) EmptyPanel.Visibility = Visibility.Collapsed;
         GroupsPanel.Visibility = !history && groups.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var exp in GroupCards.Children.OfType<Expander>()) if (exp.IsExpanded && exp.Content is StackPanel groupPanel) foreach (var list in groupPanel.Children.OfType<ListBox>()) list.Items.Refresh();
         RecentPanel.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
@@ -74,12 +82,12 @@ public partial class MainWindow : Window
     }
     async void AnalyzeClick(object sender, RoutedEventArgs e)
     {
-        var url = UrlBox.Text.Trim(); var version = ++analysisVersion;
+        var url = UrlBox.Text.Trim(); var version = ++analysisVersion; previewJobId = null; MetadataLabel.Text = "";
         try { StatusLabel.Text = "正在分析連結…"; var info = await engine.Analyze(url); mediaCache[url] = info; if (version != analysisVersion || UrlBox.Text.Trim() != url) return; ApplyPreview(info); StatusLabel.Text = "選擇格式及品質後開始下載"; }
         catch (Exception ex) { if (version == analysisVersion) StatusLabel.Text = ex.Message; }
     }
     public void ApplyPreview(MediaInfo info) { previewInfo = info; MediaTitle.Text = info.Title; MediaSubtitle.Text = info.Duration is double d ? $"片長 {TimeSpan.FromSeconds(d):hh\\:mm\\:ss}" : "已取得影片資訊"; ShowImage(info.Thumbnail); UpdateQualities(); }
-    void UrlChanged(object sender, TextChangedEventArgs e) { analysisVersion++; previewInfo = null; if (QualityBox is not null && EstimateLabel is not null) UpdateQualities(); }
+    void UrlChanged(object sender, TextChangedEventArgs e) { analysisVersion++; previewInfo = null; previewJobId = null; if (MetadataLabel is not null) MetadataLabel.Text = ""; if (QualityBox is not null && EstimateLabel is not null) UpdateQualities(); }
     void UpdateQualities()
     {
         var selected = QualityBox.SelectedValue is int q ? q : mode == DownloadMode.Mp3 ? engine.Settings.AudioKbps : engine.Settings.VideoHeight;
@@ -98,7 +106,7 @@ public partial class MainWindow : Window
         EstimateLabel.Text = $"預估檔案大小：{SizeEstimator.Label(bytes)}\n{detail}";
     }
     void ShowImage(string? url) { if (url == thumbnailUrl) return; thumbnailUrl = url; try { Thumbnail.Source = url is null ? null : new BitmapImage(new Uri(url)); } catch (Exception) { Thumbnail.Source = null; } }
-    void SelectPreview(DownloadJob j) { UrlBox.Text = j.Url; ApplyPreview(mediaCache.TryGetValue(j.Url, out var info) ? info : new(j.Title, j.Artist, j.Album, j.Thumbnail, j.Duration)); }
+    void SelectPreview(DownloadJob j) { UrlBox.Text = j.Url; previewJobId = j.Id; MetadataLabel.Text = j.MetadataStatus; ApplyPreview(mediaCache.TryGetValue(j.Url, out var info) ? info : new(j.Title, j.Artist, j.Album, j.Thumbnail, j.Duration)); }
     void SelectionChanged(object sender, SelectionChangedEventArgs e) { if (!refreshing) { recentSelection = false; if (JobGrid.SelectedItem is DownloadJob j) SelectPreview(j); } }
     void RecentSelected(object sender, SelectionChangedEventArgs e) { if (!refreshing && RecentGrid.SelectedItem is DownloadJob j) { recentSelection = true; SelectPreview(j); } }
     async void DownloadClick(object sender, RoutedEventArgs e)
@@ -107,18 +115,34 @@ public partial class MainWindow : Window
         {
             var p = engine.Settings; p.SetDirectory(mode, DirectoryBox.Text);
             if (mode == DownloadMode.Mp3) p.AudioKbps = (int)QualityBox.SelectedValue; else p.VideoHeight = (int)QualityBox.SelectedValue; engine.SaveSettings(p);
-            await engine.Accept(new(Guid.NewGuid().ToString("N"), UrlBox.Text.Trim(), mode == DownloadMode.Mp3 ? "mp3" : "mp4")); history = false; tagsPage = false; recentSelection = false; Refresh(); StatusLabel.Text = "已加入任務";
+            await engine.Accept(new(Guid.NewGuid().ToString("N"), UrlBox.Text.Trim(), mode == DownloadMode.Mp3 ? "mp3" : "mp4")); history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); StatusLabel.Text = "已加入任務";
         }
         catch (Exception ex) { StatusLabel.Text = ex.Message; }
     }
     void SetMode(DownloadMode value) { mode = value; DirectoryBox.Text = engine.Settings.DirectoryFor(value); DirectoryLabel.Text = value == DownloadMode.Mp3 ? "MP3 儲存位置" : "MP4 儲存位置"; QualityBox.SelectedValue = null; UpdateQualities(); Mp4Button.Background = value == DownloadMode.Mp4 ? (Brush)FindResource("Accent") : new SolidColorBrush(Color.FromRgb(34, 47, 64)); Mp3Button.Background = value == DownloadMode.Mp3 ? (Brush)FindResource("Accent") : new SolidColorBrush(Color.FromRgb(34, 47, 64)); }
     void Mp4Click(object s, RoutedEventArgs e) => SetMode(DownloadMode.Mp4); void Mp3Click(object s, RoutedEventArgs e) => SetMode(DownloadMode.Mp3);
     void BrowseClick(object s, RoutedEventArgs e) { var dialog = new Microsoft.Win32.OpenFolderDialog(); if (dialog.ShowDialog(this) == true) { var p = engine.Settings; p.SetDirectory(mode, dialog.FolderName); engine.SaveSettings(p); DirectoryBox.Text = p.DirectoryFor(mode); } }
-    void NewClick(object s, RoutedEventArgs e) { history = false; tagsPage = false; recentSelection = false; Refresh(); UrlBox.Focus(); }
-    void QueueClick(object s, RoutedEventArgs e) { history = false; tagsPage = false; recentSelection = false; Refresh(); }
+    void NewClick(object s, RoutedEventArgs e) { history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); UrlBox.Focus(); }
+    void QueueClick(object s, RoutedEventArgs e) { history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); }
     void HistoryClick(object s, RoutedEventArgs e) => OpenHistory();
     void SearchChanged(object s, TextChangedEventArgs e) { if (IsLoaded) Refresh(); }
-    void ClearClick(object s, RoutedEventArgs e) { var snapshot = store.Load(true).Where(j => j.State == JobState.Completed && !j.IsGroupRoot && MatchesLibrary(j)).Select(j => j.Id).ToArray(); if (System.Windows.MessageBox.Show(this, $"即將清空當前篩選出的 {snapshot.Length} 筆歷史紀錄？\n實體檔案會保留。", "清空歷史", MessageBoxButton.YesNo) == MessageBoxResult.Yes) { store.ClearHistory(snapshot); Refresh(); } }
+    async void ClearClick(object s, RoutedEventArgs e)
+    {
+        var snapshot = store.Load(true).Where(j => j.State == JobState.Completed && !j.IsGroupRoot && MatchesLibrary(j)).Select(j => j.Id).ToArray();
+        if (snapshot.Length == 0) return;
+        if (await new ConfirmWindow(this, "清空歷史", $"即將清空當前篩選出的 {snapshot.Length} 筆歷史紀錄？\n實體檔案會保留。", "清空紀錄").Ask()) { store.ClearHistory(snapshot); Refresh(); }
+    }
+    public Action<string> RecycleFile { get; set; } = ShellFiles.Recycle;
+    async void DeleteFileClick(object s, RoutedEventArgs e)
+    {
+        var selected = SelectedJobs(); if (!history || selected.Length != 1 || selected[0].FilePath is not string path) { StatusLabel.Text = "請在已下載選取一個檔案。"; return; }
+        if (OwnedWindows.OfType<TagWindow>().Any()) { StatusLabel.Text = "請先完成或關閉標籤編輯，再刪除檔案。"; return; }
+        var id = selected[0].Id;
+        if (!await new ConfirmWindow(this, "刪除所選檔案", $"將「{Path.GetFileName(path)}」移到資源回收筒，並移除對應下載紀錄？\n其他檔案不受影響。", "刪除檔案").Ask()) return;
+        try { LibraryActions.DeleteFile(store, id, path, RecycleFile); StatusLabel.Text = "所選檔案已移到資源回收筒"; Refresh(); }
+        catch (Exception ex) { StatusLabel.Text = "未能刪除檔案：" + ex.Message; }
+    }
+    void FailedClick(object s, RoutedEventArgs e) { failures = !failures; recentSelection = false; Refresh(); }
     async void PauseClick(object s, RoutedEventArgs e) { foreach (var j in JobGrid.SelectedItems.Cast<DownloadJob>().ToArray()) await engine.Pause(j.Id); }
     void ResumeClick(object s, RoutedEventArgs e) { foreach (var j in JobGrid.SelectedItems.Cast<DownloadJob>().ToArray()) { if (j.State == JobState.PendingChoice) AskChoice(j); else engine.Resume(j.Id); } }
     async void CancelClick(object s, RoutedEventArgs e) => await engine.Cancel(JobGrid.SelectedItems.Cast<DownloadJob>().Select(j => j.Id).ToArray());

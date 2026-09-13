@@ -55,6 +55,8 @@ public sealed class DownloadJob
     public string? Error { get; set; }
     public string? Stderr { get; set; }
     public bool IsUserEdited { get; set; }
+    public string MetadataStatus { get; set; } = "";
+    public DateTimeOffset? MetadataCheckedAt { get; set; }
     public bool HadCredentials { get; set; }
     public bool IsGroupRoot { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

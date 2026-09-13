@@ -1,6 +1,18 @@
 # 驗證紀錄 — 2026-09-13
 
-本交付包含可編譯原始碼、Windows x64 可攜式測試包、Android 通用 Debug APK、MV3 擴充功能。這是可使用及持續驗收的開發版本；未簽署正式發佈，亦未發布 GitHub 或瀏覽器商店。
+本交付包含可編譯原始碼、Windows x64 可攜式測試包、Android 通用 Debug APK、MV3 擴充功能。原始碼已上傳私人 GitHub 倉庫 HKmario852/mp4-mp3-downloader；未簽署正式發佈，未發布 Releases 或瀏覽器商店。
+
+## 0.1.3 歷史與 MusicBrainz 驗證（2026-09-13）
+
+- C# 核心 33 項測試通過，包括缺歌手查詢、Unicode 標題、重複 recording、多 release 封面後備、歧義拒絕、服務不可用、任務狀態及單檔刪除保護。API 配對與封面成功分支使用模擬 HTTP 回應。
+- `artifacts/qa-013-library/update-checks.json`：11 組新 WPF 檢查通過；深色確認、取消不動作、篩選快照不影響後來新增紀錄、清空保留檔案、單一檔案刪除、完成移出及失敗分頁。原生資源回收筒 API 僅以自行產生的測試檔案驗證。
+- `artifacts/qa-013-ui/ui-checks.json` 8 組、`artifacts/qa-013-library-regression/library-checks.json` 10 組既有 WPF 檢查通過；含真實 MP3 標籤保存與重新命名。
+- `artifacts/qa-013-download/download-smoke.json`：真實 yt-dlp / FFmpeg 完成公開 Big Buck Bunny MP4、MP3；MP3 開啟 MusicBrainz，查詢時間及「查無可靠配對」狀態已保存。這是電影範例，無配對不代表音樂庫錯誤。
+- 真實 MusicBrainz 歌曲查詢曾回 HTTP 503 及「web server is currently busy」；服務可用性會變動，不將模擬封面結果宣稱為真實歌曲配對成功。
+- Android 0.1.3 APK 與 9 項 JVM 測試通過。新增 Android 單檔刪除及 API 配對的 Activity／SAF 真機流程仍未驗收。
+- 使用者正在運行的舊 App、下載檔案與個人資料未被覆蓋；新版本須退出系統匣後自行更新。
+
+API 行為依據：[MusicBrainz 限速及 User-Agent](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting)、[Cover Art Archive API](https://musicbrainz.org/doc/Cover_Art_Archive/API)。每次 MP3 查詢以 MusicBrainz 設定已開啟為前提，不會擅自開啟雲端查詢。
 
 ## 0.1.2 檔案管理驗證（2026-09-13）
 
@@ -55,7 +67,7 @@
 - Android Activity 視覺與點擊流程、Android 15+ dataSync 時限、Wi-Fi/行動數據切換、通知 Action、SD card / 雲端 SAF 權限與容量、OEM 衍生行程終止。API 32 引擎測試不可替代這些驗收。
 - MusicBrainz / Cover Art Archive 實際匹配及多封面播放器相容性、完整播放清單的失敗彙總與長時間壓力測試。
 - ID3 擴充標頭與 unsynchronisation 變體目前會安全拒絕；任意原始 frame 透過進階 Base64 JSON 編輯，並非完整 MP3Tag 產品的全部專用欄位控制器。
-- GitHub 真實 repository、正式 APK 簽署、Windows 簽章、第三方二進位對應來源封裝尚未配置。端側 ONNX 音樂模型尚未提供。
+- GitHub 原始碼倉庫已建立；Releases、自動更新私人倉庫認證、正式 APK 簽署、Windows 簽章、第三方二進位對應來源封裝尚未配置。端側 ONNX 音樂模型尚未提供。
 
 ## 重跑方式
 

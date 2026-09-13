@@ -12,24 +12,58 @@ import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
+data class MusicResult(val status:String,val title:String?=null,val artist:String?=null,val album:String?=null,val cover:Art?=null)
 object Metadata {
     private val client=OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(20,TimeUnit.SECONDS).build()
     private val pool=Semaphore(5);private val rate=Mutex();private var next=0L
-    private fun request(url: String)=Request.Builder().url(url.replaceFirst("http://","https://")).header("User-Agent","OmniDownloader/0.1.0 (local open-source music tagger)").build()
+    private fun request(url: String)=Request.Builder().url(url.replaceFirst("http://","https://")).header("User-Agent","MP4MP3Downloader/0.1.3 (https://github.com/HKmario852)").build()
     suspend fun fetch(url: String,description: String,type: Int): Art? = withContext(Dispatchers.IO) {
         client.newCall(request(url)).execute().use { r ->if(!r.isSuccessful)return@withContext null;val body=r.body ?: return@withContext null;if(body.contentLength()>32*1024*1024) return@withContext null
             val out=java.io.ByteArrayOutputStream();body.byteStream().use{i->val b=ByteArray(65536);while(true){val n=i.read(b);if(n<0)break;if(out.size()+n>32*1024*1024)throw java.io.IOException("封面過大");out.write(b,0,n)}};val bytes=out.toByteArray();val mime=when{bytes.size>2&&bytes[0]==0xff.toByte()&&bytes[1]==0xd8.toByte()->"image/jpeg";bytes.size>8&&bytes[0]==0x89.toByte()&&bytes[1]==80.toByte()->"image/png";bytes.size>12&&String(bytes,8,4)=="WEBP"->"image/webp";else->return@withContext null};Art(bytes,mime,description,type) }
     }
-    suspend fun find(title: String,artist: String): Art? = pool.withPermit {
-        if(artist.isBlank())return@withPermit null
+    fun prepare(title:String,artist:String):Pair<String,String> {
+        var name=title.replace(Regex("""\s*[\(\[【](?:(?:official|music|lyrics?|audio|video|mv|hd|4k|visuali[sz]er|字幕|歌詞|官方)\s*)+[\)\]】]\s*$""",RegexOption.IGNORE_CASE),"").trim();var singer=artist.trim()
+        val parts=name.split(Regex("""\s+[-–—]\s+"""));if(parts.size==2&&parts.all{it.isNotBlank()}&&(singer.isBlank()||normalized(parts[0])==normalized(singer))){singer=parts[0];name=parts[1]}
+        return name.ifBlank{title} to singer
+    }
+    private fun normalized(text:String)=java.text.Normalizer.normalize(text,java.text.Normalizer.Form.NFKC).filter{it.isLetterOrDigit()}.uppercase(java.util.Locale.ROOT)
+    private fun array(root:JSONObject,key:String):List<JSONObject>{val a=root.optJSONArray(key)?:return emptyList();return(0 until a.length()).mapNotNull{a.optJSONObject(it)}}
+    private fun artists(recording:JSONObject)=array(recording,"artist-credit").map{it.optString("name").ifBlank{it.optJSONObject("artist")?.optString("name")?:""}}.filter{it.isNotBlank()}
+    suspend fun lookup(title:String,artist:String,duration:Double?):MusicResult=pool.withPermit {
         try {
-            val root=rate.withLock { delay((next-System.currentTimeMillis()).coerceAtLeast(0));next=System.currentTimeMillis()+1000
-                withContext(Dispatchers.IO) { val q=URLEncoder.encode("recording:\"${title.replace("\"","")}\" AND artist:\"${artist.replace("\"","")}\"","UTF-8");client.newCall(request("https://musicbrainz.org/ws/2/recording/?fmt=json&limit=5&query=$q")).execute().use{r->if(r.code==429||r.code==503)next=System.currentTimeMillis()+5000;if(!r.isSuccessful)return@withContext null;JSONObject(r.body!!.string())} } } ?: return@withPermit null
-            val rs=root.getJSONArray("recordings");val matches=(0 until rs.length()).map{rs.getJSONObject(it)}.filter { r -> r.optString("title").equals(title,true)&&r.optJSONArray("artist-credit")?.let{a->(0 until a.length()).any{a.getJSONObject(it).optString("name").equals(artist,true)}}==true }
-            if(matches.size!=1)return@withPermit null;val release=matches.first().optJSONArray("releases")?.optJSONObject(0)?.optString("id") ?: return@withPermit null
-            val coverJson=withContext(Dispatchers.IO){client.newCall(request("https://coverartarchive.org/release/$release")).execute().use{r->if(r.isSuccessful)JSONObject(r.body!!.string())else null}} ?: return@withPermit null
-            val imgs=coverJson.getJSONArray("images");val front=(0 until imgs.length()).map{imgs.getJSONObject(it)}.firstOrNull{it.optBoolean("front")&&it.optBoolean("approved")} ?: return@withPermit null
-            fetch(front.getString("image"),"Album front",3)
-        } catch(e: kotlinx.coroutines.CancellationException) { throw e } catch(_: Exception) { null }
+            val(name,singer)=prepare(title,artist)
+            fun escaped(s:String)=s.replace("\\","\\\\").replace("\"","\\\"")
+            val query="recording:\"${escaped(name)}\""+if(singer.isBlank())""else" AND artist:\"${escaped(singer)}\""
+            var root:JSONObject?=null
+            for(attempt in 0..1){
+                root=rate.withLock{delay((next-System.currentTimeMillis()).coerceAtLeast(0));next=System.currentTimeMillis()+1000
+                    withContext(Dispatchers.IO){client.newCall(request("https://musicbrainz.org/ws/2/recording/?fmt=json&limit=25&query=${URLEncoder.encode(query,"UTF-8")}")).execute().use{r->
+                        if(r.code==429||r.code==503){next=System.currentTimeMillis()+((r.header("Retry-After")?.toLongOrNull()?:5L).coerceAtLeast(5L)*1000);null}
+                        else{if(!r.isSuccessful)throw java.io.IOException("MusicBrainz unavailable");JSONObject(r.body!!.string())}
+                    }}
+                }
+                if(root!=null)break
+                if(next-System.currentTimeMillis()>30000)break
+            }
+            if(root==null)return@withPermit MusicResult("MusicBrainz：服務暫時無法使用，已保留來源資料")
+            val matches=array(root,"recordings").filter{r->normalized(r.optString("title"))==normalized(name)&&artists(r).isNotEmpty()&&
+                if(singer.isNotBlank())artists(r).any{normalized(it)==normalized(singer)}||normalized(artists(r).joinToString(" & "))==normalized(singer)
+                else r.optInt("score")>=95&&duration!=null&&duration>0&&r.has("length")&&kotlin.math.abs(r.optDouble("length")/1000-duration)<=maxOf(8.0,duration*.04)
+            }.sortedBy{r->if(duration!=null&&r.has("length"))kotlin.math.abs(r.optDouble("length")/1000-duration)else Double.MAX_VALUE}
+            if(matches.isEmpty())return@withPermit MusicResult("MusicBrainz：查無可靠配對，已保留來源資料")
+            if(matches.map{normalized(artists(it).joinToString(" & "))}.distinct().size!=1)return@withPermit MusicResult("MusicBrainz：有多個可能結果，已保留來源資料")
+            val matchedTitle=matches.first().getString("title");val matchedArtist=artists(matches.first()).joinToString(" & ")
+            val releases=matches.flatMap{array(it,"releases")}.filter{it.optString("status") in listOf("","Official")}.sortedByDescending{it.optJSONObject("release-group")?.optString("primary-type")=="Album"}.distinctBy{it.optString("id")}.take(5)
+            for(release in releases){val id=runCatching{java.util.UUID.fromString(release.optString("id"))}.getOrNull()?:continue
+                try {
+                    val coverJson=withContext(Dispatchers.IO){client.newCall(request("https://coverartarchive.org/release/$id")).execute().use{r->if(r.isSuccessful)JSONObject(r.body!!.string())else null}}?:continue
+                    for(front in array(coverJson,"images").filter{it.optBoolean("front")&&it.optBoolean("approved")}){
+                        val art=fetch(front.getString("image"),"Album front",3)?:continue
+                        return@withPermit MusicResult("MusicBrainz：已配對並嵌入專輯封面",matchedTitle,matchedArtist,release.optString("title"),art)
+                    }
+                }catch(e:kotlinx.coroutines.CancellationException){throw e}catch(_:Exception){}
+            }
+            MusicResult("MusicBrainz：已配對標籤，未取得專輯封面",matchedTitle,matchedArtist,releases.firstOrNull()?.optString("title"))
+        }catch(e:kotlinx.coroutines.CancellationException){throw e}catch(_:Exception){MusicResult("MusicBrainz：服務暫時無法使用，已保留來源資料")}
     }
 }

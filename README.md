@@ -27,6 +27,14 @@ dotnet test tests/Core.Tests/Core.Tests.csproj
 
 輸出 `artifacts/OmniDownloader-universal-debug.apk`，內嵌四種 ABI 的 yt-dlp / FFmpeg 相依套件。Debug APK 可安裝測試；正式發佈需自己的簽署金鑰，不把私鑰提交 Git。
 
+## 0.1.3 歷史、刪除與音樂資料
+
+- 清空歷史採用深色確認視窗，顯示當前篩選數量；只清除紀錄，保留檔案。
+- 完成任務自動移出下載任務，出現在最近下載及已下載；失敗項目從「失敗任務」查看及重試。
+- 已下載選取一個檔案後可按「刪除檔案」。Windows 移到資源回收筒；Android 確認後永久刪除。只有刪除成功才清除對應紀錄。
+- MusicBrainz 開啟後，每次新 MP3 都查詢，包括來源缺少歌手欄位的情況。保守解析「歌手 - 歌名」，或用歌名、片長及搜尋分數核對；顯示配對／無可靠配對／服務不可用結果。多個候選歌手不自動覆寫。
+- 最多嘗試五個發行版本的專輯封面；查無或服務繁忙時保留來源標籤與可取得的影片縮圖。不能保證每段影片都有音樂資料；已下載檔案不會自動重新處理。
+
 ## 0.1.2 檔案管理修正
 
 - 「標籤編輯」列出已下載 MP3；選取曲目後按「編輯所選標籤」，或雙擊曲目。支援多選批次修改。
@@ -60,13 +68,13 @@ Cookie 只走 Native Messaging / current-user Named Pipe。綠色勾號表示主
 ## 功能與行為
 
 - 併發 1–5、排隊、續傳暫停、排他取消、500 ms EMA 網速、失敗退避、清單分組。
-- MP4 品質 720p 至 8K / 最佳，MP3 128/192/256/320 kbps。
+- MP4 品質最高 4K / 最佳（同樣限制 4K），MP3 128/192/256/320 kbps。
 - 已下載的多關鍵字 AND 搜尋，篩選結果快照清空，保留實體檔案。
 - MP3 批次 ID3 編輯：未修改欄位保留、Track 固定填值、空字串保留 Frame、Title 即時驗證及重新命名。
 - MusicBrainz 預設關閉；開啟後精確比對歌曲/歌手，Cover Art Archive 封面 + 影片縮圖 APIC。
 - Windows 系統匣、Toast；Android 通知背景暫停/取消、Wi-Fi 工作階段授權、SAF 未知容量確認。
 - Android 初始儲存於 App 外部音樂資料夾，解除安裝會刪除；建議使用「選擇資料夾」儲存到共用 SAF 目錄。
-- GitHub 更新檢查需要在 App 設定填寫真實的 `owner/repository`；本專案未擅自建立或發布遠端儲存庫。
+- 原始碼已連接私人 GitHub 倉庫 `HKmario852/mp4-mp3-downloader`。尚未發布 Releases；目前更新器未支援私人 Releases 身份驗證，請使用本機打包的成品更新。
 
 ## 專案
 

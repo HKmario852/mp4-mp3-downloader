@@ -4,6 +4,12 @@ namespace Omni.Windows;
 
 public static class ShellFiles
 {
+    public static void Recycle(string path)
+    {
+        var root = Path.GetPathRoot(Path.GetFullPath(path))!;
+        if (root.StartsWith(@"\\") || new DriveInfo(root).DriveType != DriveType.Fixed) throw new IOException("此位置未能保證支援資源回收筒，請使用「開啟檔案位置」自行處理。");
+        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(path, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin, Microsoft.VisualBasic.FileIO.UICancelOption.ThrowException);
+    }
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern int SHParseDisplayName(string name, IntPtr context, out IntPtr item, uint attributes, out uint result);
     [DllImport("shell32.dll")] static extern int SHOpenFolderAndSelectItems(IntPtr item, uint count, IntPtr children, uint flags);
     public static void Select(string path)

@@ -58,12 +58,13 @@ class Engine(val context: Context) {
                 catch(e: CancellationException){throw e}
                 catch(e: Exception){if(attempt==3||get(id).state in listOf(State.Paused,State.Cancelled)||e.message?.contains("403")==true)throw e;val seconds=1 shl(attempt+1);update(id){it.copy(state=State.RetryWait,retry=attempt+1,retryAt=System.currentTimeMillis()+seconds*1000,speed=0.0,eta=0)};delay(seconds*1000L)}
             }
-            currentCoroutineContext().ensureActive();update(id){it.copy(state=State.Processing,speed=0.0,eta=0)};val task=get(id)
+            currentCoroutineContext().ensureActive();update(id){it.copy(state=State.Processing,speed=0.0,eta=0)};var task=get(id)
             var cover: Art?=null
             val file=work.listFiles()?.firstOrNull{it.name=="media.${task.mode}"} ?: error("找不到下載輸出檔案")
             if(task.mode=="mp3") {
-                val tag=Id3.read(file);tag.setText("TIT2",task.title);tag.setText("TPE1",task.artist);tag.setText("TALB",task.album)
-                val arts=mutableListOf<Art>();if(prefs.value.musicBrainz)Metadata.find(task.title,task.artist)?.let(arts::add)
+                val tag=Id3.read(file);val arts=mutableListOf<Art>()
+                if(prefs.value.musicBrainz){update(id){it.copy(metadataStatus="MusicBrainz：正在查詢歌曲及專輯封面…")};val result=Metadata.lookup(task.title,task.artist,info.optDouble("duration").takeIf{it.isFinite()&&it>0});update(id){it.copy(metadataStatus=result.status,title=if(it.isUserEdited)it.title else result.title?:it.title,artist=if(it.isUserEdited)it.artist else result.artist?:it.artist,album=if(it.isUserEdited)it.album else result.album?:it.album)};result.cover?.let(arts::add)}else update(id){it.copy(metadataStatus="MusicBrainz：已在設定關閉")}
+                task=get(id);tag.setText("TIT2",task.title);tag.setText("TPE1",task.artist);tag.setText("TALB",task.album)
                 task.thumbnail?.let{url->try{Metadata.fetch(url,"Video thumbnail",if(arts.isEmpty())3 else 0)?.let(arts::add)}catch(e: CancellationException){throw e}catch(_:Exception){}}
                 if(arts.isNotEmpty()){tag.covers(arts);cover=arts.first()};val temp=File(work,"tagged.mp3");tag.write(file,temp);java.nio.file.Files.move(temp.toPath(),file.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             }
@@ -96,6 +97,7 @@ class Engine(val context: Context) {
     suspend fun cancel(ids: Set<String>) {for(id in ids){val t=get(id);if(t.state !in listOf(State.Queued,State.Analyzing,State.Downloading,State.RetryWait))continue;update(id){it.copy(state=State.Cancelled,speed=0.0,eta=0)};YoutubeDL.getInstance().destroyProcessById(id);active[id]?.cancelAndJoin();val root=File(context.filesDir,"work").canonicalFile;val dir=File(root,id).canonicalFile;require(dir.parentFile==root);dir.deleteRecursively();grants.tasks.remove(id)}}
     fun resume(id: String){if(get(id).state in listOf(State.Paused,State.Failed)&&active[id]?.isActive!=true)update(id){it.copy(state=State.Queued,error=null,retry=0)}}
     suspend fun onNetworkChanged() {if(!prefs.value.wifiOnly)return;val blocked=tasks.value.filter{it.state in listOf(State.Analyzing,State.Downloading,State.RetryWait)&&!permitted(it.id)};blocked.forEach{pause(it.id)};if(blocked.isNotEmpty())Notices.show(context,"已切換為行動數據或受限網路，下載已自動暫停")}
+    suspend fun deleteDownloaded(id:String)=withContext(Dispatchers.IO){val t=get(id);require(t.state==State.Completed&&!t.groupRoot&&t.history){"請選取一個已下載檔案"};val path=t.path?:error("找不到檔案");val deleted=if(path.startsWith("content://"))androidx.documentfile.provider.DocumentFile.fromSingleUri(context,Uri.parse(path))?.delete()==true else File(path).delete();check(deleted){"未能刪除檔案，紀錄已保留"};clearHistory(tasks.value.filter{it.path==path&&it.state==State.Completed}.map{it.id}.toSet())}
     fun clearHistory(ids: Set<String>){db.hide(ids);synchronized(this){mutable.value=mutable.value.map{if(it.id in ids)it.copy(history=false)else it}}}
     companion object {
         fun redact(s: String)=s.replace(Regex("https?://\\S+|(?i)(cookie|authorization|token)\\s*[:=].*"),"[已隱藏敏感資料]")
