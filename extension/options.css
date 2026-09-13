@@ -1,0 +1,2 @@
+body{width:360px;margin:22px;background:#131c27;color:#e8efff;font:14px/1.7 system-ui}h2{font-size:20px}code{display:block;color:#79a8ff;user-select:all}label{display:block;margin-top:20px}p{color:#a7b8d0}input{accent-color:#7055ff}
+h2 { display: flex; align-items: center; gap: 8px; }
