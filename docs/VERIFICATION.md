@@ -1,6 +1,6 @@
 # 驗證紀錄 — 2026-09-13
 
-本交付包含可編譯原始碼、Windows x64 可攜式測試包、Android 通用 Debug APK、MV3 擴充功能。原始碼及 Releases 將在 HKmario852/mp4-mp3-downloader 公開發布；Windows 未簽署，Android 為測試 APK，擴充功能尚未發布瀏覽器商店。
+本交付包含可編譯原始碼、Windows x64 可攜式測試包、Android 通用 Debug APK、MV3 擴充功能。原始碼及 Releases 已在 HKmario852/mp4-mp3-downloader 公開發布；Windows 未簽署，Android 為測試 APK，擴充功能尚未發布瀏覽器商店。
 
 ## 0.1.4（2026-09-14）
 
@@ -8,7 +8,8 @@
 - 擴充功能 Service Worker 7 項測試及 Chromium 隔離 DOM 6 項測試通過；新增 SPA sender 舊網址、index/t 變動、私人清單 URL、Cookie 查詢期間導航拒絕。
 - Android 0.1.4 通用 Debug APK 編譯及 9 項 JVM 測試通過。Windows self-contained x64 編譯通過。
 - 更新器測試包含 SHA256、路徑、架構、衝突拒絕及隔離資料夾實際覆蓋／保留 data 和 native-host.json／刪除 ZIP。測試未對使用者正在運行的 App 執行覆蓋。
-- Brave 管理擴充功能頁被瀏覽器工具安全政策阻擋；已同步解壓擴充功能檔案，重新載入需使用者操作。尚未證明使用者私人清單實際下載成功。
+- 使用者手動重新載入後，真實 Brave 按鈕 → Native Messaging → App 接收成功，資料庫確認 HadCredentials=true 及 PendingChoice，沒有擷取或輸出 Cookie 值。使用者選擇單片後，YouTube 仍回 Video unavailable；穩定版及隔離官方 nightly 均未解決測試影片。此結果不等於私人影片下載成功。
+- 公開 v0.1.4 最新 Release 可匿名讀取，五項上傳資產 SHA256 與本機一致；Windows ZIP 通過全 PE、路徑及雜湊檢查。
 
 ## 0.1.3 歷史與 MusicBrainz 驗證（2026-09-13）
 
