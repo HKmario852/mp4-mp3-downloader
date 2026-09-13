@@ -20,7 +20,7 @@ public sealed class Preferences
     public string? Mp3Directory { get; set; }
     public string DirectoryFor(DownloadMode mode) => (mode == DownloadMode.Mp3 ? Mp3Directory : Mp4Directory) is { Length: > 0 } path ? path : DownloadDirectory;
     public void SetDirectory(DownloadMode mode, string path) { if (mode == DownloadMode.Mp3) Mp3Directory = path; else Mp4Directory = path; }
-    public string ReleaseRepository { get; set; } = "";
+    public string ReleaseRepository { get; set; } = "HKmario852/mp4-mp3-downloader";
     public string ExtensionId { get; set; } = "";
     public void Validate()
     {

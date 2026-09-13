@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$InstallPath,
     [Parameter(Mandatory)][ValidateRange(1,2147483647)][int]$AppPid,
@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ExpectedSha256,
     [Parameter(Mandatory)][ValidatePattern('^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/?$')][string]$ReleasesUrl,
     [switch]$ValidateOnly,
+    [switch]$Restart,
     [switch]$NoRestartPrompt
 )
 $ErrorActionPreference = 'Stop'
@@ -147,7 +148,8 @@ try {
     $success=$true
     Remove-Item -LiteralPath $zip -Force
     Write-Host 'Update complete. Settings and history were preserved.' -ForegroundColor Green
-    if(-not $NoRestartPrompt){$answer=Read-Host 'Restart now? [Y/N]';if($answer -match '^[Yy]$'){Start-Process -FilePath (Join-Path $install 'App.exe') -WorkingDirectory $install}}
+    if($Restart){Start-Process -FilePath (Join-Path $install 'App.exe') -WorkingDirectory $install -WindowStyle Hidden}
+    elseif(-not $NoRestartPrompt){$answer=Read-Host 'Restart now? [Y/N]';if($answer -match '^[Yy]$'){Start-Process -FilePath (Join-Path $install 'App.exe') -WorkingDirectory $install}}
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
     if(-not $success) {
@@ -155,6 +157,7 @@ try {
         foreach($name in $created){try{$remove=Assert-Under (Join-Path $install $name) $install;Remove-Item -LiteralPath $remove -Force}catch{$restoreFailed=$true}}
     }
     if($restoreFailed){Write-Host "Rollback requires attention. Recovery backup retained: $backup" -ForegroundColor Red}
+    if($Restart){Add-Type -AssemblyName PresentationFramework;[System.Windows.MessageBox]::Show(('更新未完成：'+$_.Exception.Message),'全能影音下載器更新')|Out-Null}
     throw
 } finally {
     if(-not $restoreFailed){$remove=Assert-Under $stage ([IO.Path]::GetTempPath());if(Test-Path -LiteralPath $remove){Remove-Item -LiteralPath $remove -Recurse -Force}}

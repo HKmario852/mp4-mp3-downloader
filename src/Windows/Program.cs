@@ -32,6 +32,12 @@ public static class Program
         engine.Notify += text => app.Dispatcher.BeginInvoke(() => Notifications.Show(text));
         engine.ChoiceRequested += job => app.Dispatcher.BeginInvoke(() => window.AskChoice(job));
         using var ipcCt = new CancellationTokenSource(); var listener = Ipc.Listen(request => { if (request.Mode is ("open" or "history") && request.Url == "" && request.Cookies is null) { app.Dispatcher.BeginInvoke(() => { if (request.Mode == "history") window.OpenHistory(); else window.Reveal(); }); return Task.FromResult(new IntakeAck(true, request.RequestId, "Opened")); } return engine.Accept(request); }, ipcCt.Token);
+        bool shuttingDown = false;
+        UpdateManager.ExitForUpdate = async () => {
+            if (shuttingDown) return; shuttingDown = true; ipcCt.Cancel();
+            window.AllowClose = true;
+            await engine.DisposeAsync(); tray.Dispose(); app.Shutdown();
+        };
         app.Startup += async (_, _) =>
         {
             if (!args.Contains("--minimized")) window.Show();

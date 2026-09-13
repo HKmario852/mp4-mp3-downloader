@@ -1,4 +1,4 @@
-﻿# mp4/mp3 downloader
+# mp4/mp3 downloader
 
 全能影音下載器 / Omni Downloader。GitHub 倉庫名稱：`mp4-mp3-downloader`。
 
@@ -26,6 +26,22 @@ dotnet test tests/Core.Tests/Core.Tests.csproj
 ```
 
 輸出 `artifacts/OmniDownloader-universal-debug.apk`，內嵌四種 ABI 的 yt-dlp / FFmpeg 相依套件。Debug APK 可安裝測試；正式發佈需自己的簽署金鑰，不把私鑰提交 Git。
+
+## 下載與 App 內更新
+
+[下載最新 Windows 版本、Android 測試 APK 及瀏覽器擴充功能](https://github.com/HKmario852/mp4-mp3-downloader/releases/latest)。Windows x64 為免安裝版，首次解壓到可寫入的固定資料夾後啟動 App.exe。
+
+0.1.4 起：設定 →「下載並安裝最新版本」。App 會驗證 GitHub 發布資產的 SHA256，暫停未完成任務並退出，更新器保留 data/ 與 native-host.json，安裝後重新啟動。更新後需手動繼續暫停任務；私人內容的登入資料只保留於記憶體，重啟後需從擴充功能重新傳送。
+
+從 0.1.3 更新：GitHub 專案填 HKmario852/mp4-mp3-downloader，按「下載並安裝最新版本」，下載驗證後從系統匣選「結束」，按更新器的 Y 重開。這次仍需結束舊版，但不需要手動解壓；之後使用新版自動流程。
+
+## 0.1.4 修正
+
+- 擴充功能以目前分頁的影片及清單識別核對請求，避免 YouTube SPA 舊網址或 index/t 參數變動誤報頁面已切換；Cookie 傳送前再次確認。
+- 支援 /playlist 頁面掛載。私人清單需登入有存取權的 YouTube 帳戶，並在擴充功能設定同意傳送至本機；手動貼上網址與 URI 後備不帶 Cookie。
+- 「移除」可移除暫停、失敗、待選擇及進行中的任務，清理其工作暫存，排除完成項目。
+- MP3 預設以來源影片縮圖作第一封面；MusicBrainz 圖作第二封面，縮圖不可取得時才以專輯图後備。既有 MP3 不會被自動重寫。
+- 設定預填正式 GitHub 倉庫；更新版本比較使用實際 App 版本。
 
 ## 0.1.3 歷史、刪除與音樂資料
 
@@ -74,7 +90,7 @@ Cookie 只走 Native Messaging / current-user Named Pipe。綠色勾號表示主
 - MusicBrainz 預設關閉；開啟後精確比對歌曲/歌手，Cover Art Archive 封面 + 影片縮圖 APIC。
 - Windows 系統匣、Toast；Android 通知背景暫停/取消、Wi-Fi 工作階段授權、SAF 未知容量確認。
 - Android 初始儲存於 App 外部音樂資料夾，解除安裝會刪除；建議使用「選擇資料夾」儲存到共用 SAF 目錄。
-- 原始碼已連接私人 GitHub 倉庫 `HKmario852/mp4-mp3-downloader`。尚未發布 Releases；目前更新器未支援私人 Releases 身份驗證，請使用本機打包的成品更新。
+- 原始碼與發布資產位於公開 GitHub 倉庫 `HKmario852/mp4-mp3-downloader`；App 更新不需 GitHub 登入。
 
 ## 專案
 

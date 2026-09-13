@@ -1,6 +1,14 @@
 # 驗證紀錄 — 2026-09-13
 
-本交付包含可編譯原始碼、Windows x64 可攜式測試包、Android 通用 Debug APK、MV3 擴充功能。原始碼已上傳私人 GitHub 倉庫 HKmario852/mp4-mp3-downloader；未簽署正式發佈，未發布 Releases 或瀏覽器商店。
+本交付包含可編譯原始碼、Windows x64 可攜式測試包、Android 通用 Debug APK、MV3 擴充功能。原始碼及 Releases 將在 HKmario852/mp4-mp3-downloader 公開發布；Windows 未簽署，Android 為測試 APK，擴充功能尚未發布瀏覽器商店。
+
+## 0.1.4（2026-09-14）
+
+- C# 35 項測試通過，包括暫停／失敗／待選擇移除、完成檔案保護、ID3 實體 frame 第一封面及第二封面資料驗證。
+- 擴充功能 Service Worker 7 項測試及 Chromium 隔離 DOM 6 項測試通過；新增 SPA sender 舊網址、index/t 變動、私人清單 URL、Cookie 查詢期間導航拒絕。
+- Android 0.1.4 通用 Debug APK 編譯及 9 項 JVM 測試通過。Windows self-contained x64 編譯通過。
+- 更新器測試包含 SHA256、路徑、架構、衝突拒絕及隔離資料夾實際覆蓋／保留 data 和 native-host.json／刪除 ZIP。測試未對使用者正在運行的 App 執行覆蓋。
+- Brave 管理擴充功能頁被瀏覽器工具安全政策阻擋；已同步解壓擴充功能檔案，重新載入需使用者操作。尚未證明使用者私人清單實際下載成功。
 
 ## 0.1.3 歷史與 MusicBrainz 驗證（2026-09-13）
 

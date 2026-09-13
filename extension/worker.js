@@ -1,4 +1,12 @@
 const HOST = "com.omni.downloader";
+function mediaKey(url) {
+  const u = new URL(url);
+  if (u.protocol !== 'https:' || !['www.youtube.com','m.youtube.com'].includes(u.hostname)) throw new Error('無效來源');
+  const video = u.pathname === '/watch' ? u.searchParams.get('v') : u.pathname.startsWith('/shorts/') ? u.pathname.split('/')[2] : '';
+  const list = u.searchParams.get('list') || '';
+  if (!video && !(u.pathname === '/playlist' && list)) throw new Error('請在影片或播放清單頁面下載');
+  return JSON.stringify([u.origin, video || '', list]);
+}
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   (async () => {
     if (sender.id !== chrome.runtime.id || !sender.tab || sender.frameId !== 0) throw new Error("無效來源");
@@ -6,7 +14,12 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (page.protocol !== "https:" || !["www.youtube.com", "m.youtube.com"].includes(page.hostname)) throw new Error("無效來源");
     if (message.type !== "download" || !["mp3", "mp4"].includes(message.mode)) throw new Error("無效請求");
     const target = new URL(message.url);
-    if (target.origin !== page.origin || target.href !== page.href) throw new Error("頁面已切換，請重新點擊");
+    const key = mediaKey(target.href);
+    async function verifyCurrentPage() {
+      const tab = await chrome.tabs.get(sender.tab.id);
+      if (target.origin !== page.origin || mediaKey(tab.url) !== key || (tab.pendingUrl && mediaKey(tab.pendingUrl) !== key)) throw new Error('頁面已切換，請重新點擊');
+    }
+    await verifyCurrentPage();
     const { forwardCookies = false } = await chrome.storage.local.get("forwardCookies");
     if (!forwardCookies) throw new Error("請先在擴充功能設定同意將 YouTube 登入憑證傳送至本機下載器");
     const stores = await chrome.cookies.getAllCookieStores();
@@ -18,6 +31,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
       .map(({ name, value, domain, path, secure, httpOnly, hostOnly, expirationDate }) => ({ name, value, domain, path, secure, httpOnly, hostOnly, expirationDate }));
     if (!cookies.some(c => /^(SID|__Secure-[13]P[AS]ID|SAPISID|LOGIN_INFO)$/.test(c.name))) throw new Error("未找到登入憑證，請先登入 YouTube");
     const requestId = crypto.randomUUID();
+    await verifyCurrentPage();
     const result = await chrome.runtime.sendNativeMessage(HOST, { requestId, url: target.href, mode: message.mode, cookies });
     if (!result?.ok || result.requestId !== requestId) throw new Error(result?.error || "主程式未確認接收");
     return result;

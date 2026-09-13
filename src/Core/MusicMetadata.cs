@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 namespace Omni.Core;
@@ -7,7 +7,7 @@ public enum MusicLookupState { Matched, MatchedNoCover, NoMatch, Ambiguous, Unav
 public sealed record MusicLookup(MusicLookupState State, string? Title = null, string? Artist = null, string? Album = null, Cover? Cover = null)
 {
     public string Message => State switch {
-        MusicLookupState.Matched => "MusicBrainz：已配對並嵌入專輯封面",
+        MusicLookupState.Matched => "MusicBrainz：已配對，專輯封面作為備用封面",
         MusicLookupState.MatchedNoCover => "MusicBrainz：已配對標籤，未取得專輯封面",
         MusicLookupState.Ambiguous => "MusicBrainz：有多個可能結果，已保留來源資料",
         MusicLookupState.Unavailable => "MusicBrainz：服務暫時無法使用，已保留來源資料",

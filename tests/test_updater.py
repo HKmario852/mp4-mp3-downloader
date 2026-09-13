@@ -16,6 +16,17 @@ class UpdaterTests(unittest.TestCase):
             result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(SCRIPT),'-InstallPath',str(install),'-AppPid','2147483647','-ZipPath',str(archive),'-ExpectedSha256',sha,'-ReleasesUrl','https://github.com/example/omni/releases','-ValidateOnly'],capture_output=True,text=True,errors='replace',timeout=30)
             self.assertEqual((install/'App.exe').read_bytes(),pe())
             return result
+    def test_real_install_keeps_data_and_removes_zip(self):
+        with tempfile.TemporaryDirectory(prefix='omni-install-test-') as folder:
+            root=pathlib.Path(folder);install=root/'install';install.mkdir();(install/'data').mkdir();(install/'data/history.db').write_bytes(b'USER-DATA');(install/'native-host.json').write_text('LOCAL-CONFIG');(install/'App.exe').write_bytes(pe()+b'old');archive=root/'release.zip'
+            with zipfile.ZipFile(archive,'w') as z:
+                for name in ['App.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:z.writestr(name,pe()+b'new')
+                z.writestr('updater.ps1','test')
+            sha=hashlib.sha256(archive.read_bytes()).hexdigest()
+            result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(SCRIPT),'-InstallPath',str(install),'-AppPid','2147483647','-ZipPath',str(archive),'-ExpectedSha256',sha,'-ReleasesUrl','https://github.com/example/omni/releases','-NoRestartPrompt'],capture_output=True,text=True,errors='replace',timeout=30)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertEqual((install/'App.exe').read_bytes(),pe()+b'new');self.assertFalse(archive.exists())
+            self.assertEqual((install/'data/history.db').read_bytes(),b'USER-DATA');self.assertEqual((install/'native-host.json').read_text(),'LOCAL-CONFIG')
     def test_valid(self):
         r=self.run_package();self.assertEqual(r.returncode,0,r.stdout+r.stderr)
     def rejection(self,needle,**kwargs):

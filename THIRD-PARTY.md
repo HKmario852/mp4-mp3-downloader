@@ -13,4 +13,13 @@
 | Coil | https://github.com/coil-kt/coil | Apache-2.0 |
 | OkHttp | https://github.com/square/okhttp | Apache-2.0 |
 
-正式散布 release 前，應將實際二進位相符的 LICENSE 與對應 source/build instructions 一起提供。工具版本與 SHA256 驗證狀態由準備腳本記錄在 tool-versions.json。
+0.1.4 Windows 工具版本：yt-dlp 2026.08.19、FFmpeg N-126497-g5b614efc7e（20260911）、Deno 2.9.6。工具由上游 GitHub SHA256 驗證；未修改上游二進位。包內包含 FFmpeg-LICENSE.txt、Deno-LICENSE.txt 及 DotNet-NOTICES.txt。
+
+對應來源與建置入口：
+
+- yt-dlp：[2026.08.19 原始碼](https://github.com/yt-dlp/yt-dlp/tree/2026.08.19)，Windows packaging 見該版本 bundle 與 devscripts。
+- FFmpeg：[5b614efc7e 原始碼](https://github.com/FFmpeg/FFmpeg/tree/5b614efc7e)，[BtbN 對應建置](https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-09-11-13-20)。依該建置樹的 README 執行 makeimage.sh win64 gpl 及 build.sh win64 gpl；所有啟用函式庫的來源及建置步驟位於 scripts.d/。
+- Deno：[v2.9.6 原始碼及授權](https://github.com/denoland/deno/tree/v2.9.6)。
+- Android 的 youtubedl-android 與相依版本見 android/app/build.gradle.kts；上游 Gradle / FFmpeg 建置腳本位於前述專案。
+
+本 App 原始碼與建置腳本可在同一 Releases 的原始碼包下載。

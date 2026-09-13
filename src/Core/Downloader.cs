@@ -123,7 +123,7 @@ public sealed class Downloader : IAsyncDisposable
                     store.Save(j);
                 } else j.MetadataStatus = "MusicBrainz：已在設定關閉";
                 doc.SetText("TIT2", j.Title); doc.SetText("TPE1", j.Artist); doc.SetText("TALB", j.Album);
-                if (info.Thumbnail is not null) { try { var thumb = await MusicMetadata.Fetch(info.Thumbnail, "Video thumbnail", covers.Count == 0 ? (byte)3 : (byte)0, ct); if (thumb is not null) covers.Add(thumb); } catch (HttpRequestException) { } }
+                if (info.Thumbnail is not null) { try { var thumb = await MusicMetadata.Fetch(info.Thumbnail, "Video thumbnail", 3, ct); covers = CoverOrder.ThumbnailFirst(covers,thumb); } catch (Exception e) when ((e is HttpRequestException or IOException or OperationCanceledException) && !ct.IsCancellationRequested) { } }
                 if (covers.Count > 0) doc.SetCovers(covers);
                 var tagged = file + ".tagged"; if (File.Exists(tagged)) File.Delete(tagged); await doc.Write(file, tagged, ct); File.Move(tagged, file, true);
                 System.IO.Directory.CreateDirectory(j.Directory);
@@ -139,7 +139,7 @@ public sealed class Downloader : IAsyncDisposable
             if (j.GroupId is null) Notify?.Invoke("下載完成：" + j.Title);
         }
         catch (OperationCanceledException) { lock (gate) { if (j.State != JobState.Completed && j.State != JobState.Cancelled) j.State = JobState.Paused; j.Speed = 0; j.Eta = 0; store.Save(j); } }
-        catch (Exception e) { j.State = JobState.Failed; j.Error = e.Message; j.Stderr = e is DownloadException d ? d.Stderr : null; j.Speed = 0; j.Eta = 0; store.Save(j); if (j.IsGroupRoot && j.GroupId is not null) { var g = Groups.First(x => x.Id == j.GroupId); g.DiscoveryComplete = true; g.DiscoveryFailures++; store.SaveGroup(g); } else if (j.GroupId is null) Notify?.Invoke("下載失敗：" + j.Title); }
+        catch (Exception e) { if (j.State == JobState.Cancelled) return; j.State = JobState.Failed; j.Error = e.Message; j.Stderr = e is DownloadException d ? d.Stderr : null; j.Speed = 0; j.Eta = 0; store.Save(j); if (j.IsGroupRoot && j.GroupId is not null) { var g = Groups.First(x => x.Id == j.GroupId); g.DiscoveryComplete = true; g.DiscoveryFailures++; store.SaveGroup(g); } else if (j.GroupId is null) Notify?.Invoke("下載失敗：" + j.Title); }
         finally { if (File.Exists(cookiePath)) File.Delete(cookiePath); if (j.State is JobState.Completed or JobState.Cancelled or JobState.Failed) credentials.TryRemove(j.Id, out _); }
     }
     public async Task<MediaInfo> Analyze(string url, List<string>? auth = null, CancellationToken ct = default)
@@ -194,7 +194,7 @@ public sealed class Downloader : IAsyncDisposable
     {
         foreach (var id in ids.Distinct())
         {
-            Task? task = null; lock (gate) { var j = jobs.FirstOrDefault(x => x.Id == id); if (j is null || j.State is not (JobState.Queued or JobState.Downloading or JobState.Analyzing or JobState.RetryWait)) continue; j.State = JobState.Cancelled; store.Save(j); if (running.TryGetValue(id, out var r)) { r.ct.Cancel(); task = r.task; } }
+            Task? task = null; lock (gate) { var j = jobs.FirstOrDefault(x => x.Id == id); if (j is null || j.State is JobState.Completed or JobState.Cancelled) continue; j.State = JobState.Cancelled; store.Save(j); if (running.TryGetValue(id, out var r)) { r.ct.Cancel(); task = r.task; } }
             if (task is not null) await task;
             var dir = Path.GetFullPath(Path.Combine(workDir, id)); var root = Path.GetFullPath(workDir) + Path.DirectorySeparatorChar;
             if (!dir.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new IOException("暫存路徑無效");

@@ -46,7 +46,7 @@ public sealed class Invariants
     public async Task CompoundRequestNeverStartsBeforeChoiceAndDeduplicates()
     {
         var dir = Path.Combine(Path.GetTempPath(), "omni-test-" + Guid.NewGuid()); Directory.CreateDirectory(dir);
-        try { var store = new Store(dir); await using (var engine = new Downloader(store, dir, Path.Combine(dir, "work"))) { var r = new IntakeRequest(Guid.NewGuid().ToString(), "https://www.youtube.com/watch?v=abc&list=def", "mp3"); await engine.Accept(r); await engine.Accept(r); await Task.Delay(700); Assert.Single(engine.Jobs); Assert.Equal(JobState.PendingChoice, engine.Jobs[0].State); await engine.Cancel(engine.Jobs.Select(j => j.Id)); Assert.Equal(JobState.PendingChoice, engine.Jobs[0].State); } }
+        try { var store = new Store(dir); await using (var engine = new Downloader(store, dir, Path.Combine(dir, "work"))) { var r = new IntakeRequest(Guid.NewGuid().ToString(), "https://www.youtube.com/watch?v=abc&list=def", "mp3"); await engine.Accept(r); await engine.Accept(r); await Task.Delay(700); Assert.Single(engine.Jobs); Assert.Equal(JobState.PendingChoice, engine.Jobs[0].State); await engine.Cancel(engine.Jobs.Select(j => j.Id)); Assert.Equal(JobState.Cancelled, engine.Jobs[0].State); } }
         finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(dir, true); }
     }
 }

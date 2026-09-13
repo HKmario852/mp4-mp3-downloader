@@ -3,6 +3,12 @@ using System.Text;
 namespace Omni.Core;
 public sealed record Id3Frame(string Id, byte[] Flags, byte[] Data);
 public sealed record Cover(byte[] Bytes, string Mime, string Description, byte Type);
+public static class CoverOrder
+{
+    public static List<Cover> ThumbnailFirst(IEnumerable<Cover> albumCovers, Cover? thumbnail) => thumbnail is null
+        ? albumCovers.ToList()
+        : [thumbnail with { Type = 3 }, .. albumCovers.Select(c => c with { Type = 0 })];
+}
 public sealed class Id3Document
 {
     public byte Version { get; private set; } = 3;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "全能影音下載器",
-  "version": "0.1.1",
+  "version": "0.1.4",
   "description": "將 YouTube 影片安全交予本機全能影音下載器。",
   "permissions": [
     "cookies",

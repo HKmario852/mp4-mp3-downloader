@@ -1,8 +1,8 @@
 (() => {
   const ID = 'omni-download-control';
-  const SELECTORS = ['ytd-watch-metadata #top-row #owner', 'ytd-watch-metadata #actions #menu', 'ytd-watch-metadata ytd-menu-renderer', '.html5-video-player .ytp-right-controls'];
+  const SELECTORS = ['ytd-watch-metadata #top-row #owner', 'ytd-watch-metadata #actions #menu', 'ytd-watch-metadata ytd-menu-renderer', '.html5-video-player .ytp-right-controls', 'ytd-playlist-header-renderer #top-level-buttons-computed', 'ytd-playlist-header-renderer #actions', 'ytd-playlist-header-renderer', 'ytd-playlist-sidebar-primary-info-renderer'];
   let mountedRoot, dispose, observer, mountTimer;
-  const validPage = () => (location.pathname === '/watch' && new URL(location.href).searchParams.has('v')) || /^\/shorts\/[\w-]+/.test(location.pathname);
+  const validPage = () => (location.pathname === '/watch' && new URL(location.href).searchParams.has('v')) || (location.pathname === '/playlist' && new URL(location.href).searchParams.has('list')) || /^\/shorts\/[\w-]+/.test(location.pathname);
   function mount() {
     if (!validPage()) { dispose?.(); return; }
     if (mountedRoot?.isConnected && document.getElementById(ID) === mountedRoot) return;
@@ -68,7 +68,7 @@
   }
   function navigate() {
     clearTimeout(mountTimer); observer?.disconnect(); dispose?.(); mount();
-    if (location.pathname === '/watch') {
+    if (location.pathname === '/watch' || location.pathname === '/playlist') {
       observer = new MutationObserver(() => { if (!mountedRoot?.isConnected || document.getElementById(ID) !== mountedRoot) { clearTimeout(mountTimer); mountTimer = setTimeout(mount, 100); } });
       observer.observe(document.querySelector('ytd-app') || document.body, { childList: true, subtree: true });
     }
