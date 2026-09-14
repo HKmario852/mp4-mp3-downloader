@@ -1,5 +1,7 @@
 # mp4/mp3 downloader
 
+目前版本 **0.2.0**：已下載多選管理、縮圖／詳細資料、App 內六分類設定、主題及新增格式。[更新內容與平台限制](docs/RELEASE-0.2.0.md)。既有 0.1.4 可在設定內更新，無需手動解壓。
+
 全能影音下載器 / Omni Downloader。GitHub 倉庫名稱：`mp4-mp3-downloader`。
 
 Windows 可攜式 App、Android 原生 App，以及 Chrome / Brave Manifest V3 擴充功能。繁體中文深色介面，Windows 跟隨提供的三欄 UI 參考。

@@ -10,4 +10,4 @@ $result=& $adb -s $DeviceId shell am instrument -w -r io.hkmario.omni.test/andro
 $out=Join-Path $root 'artifacts/android-native-test.txt'
 $result|Set-Content -LiteralPath $out -Encoding UTF8
 $result|Write-Output
-if(($result -join "`n") -notmatch 'OK \(1 test\)'){throw 'Android native download test failed'}
+if(($result -join "`n") -notmatch 'OK \(\d+ tests?\)'){throw 'Android native download test failed'}

@@ -1,0 +1,22 @@
+package io.hkmario.omni
+import com.yausername.youtubedl_android.YoutubeDLRequest
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.io.File
+object Options {
+ fun inPeriod(start:String,end:String,now:LocalTime=LocalTime.now()):Boolean {val a=LocalTime.parse(start);val b=LocalTime.parse(end);return a==b||if(a<b)now>=a&&now<b else now>=a||now<b}
+ fun validate(p:Prefs){require(p.concurrency in 1..10&&p.kbps in listOf(128,192,256,320)&&p.height in listOf(0,720,1080,1440,2160));require(p.retryCount in 0..20&&p.retrySeconds in 1..3600&&p.connectionRetries in 0..20&&p.timeoutSeconds in 5..600&&p.fragments in 1..10&&p.limitKiB in 0..1000000&&p.scheduledKiB in 1..1000000)
+  require(p.theme in listOf("dark","light","system")&&p.language in listOf("zh-Hant","en"));require(p.videoFormat in listOf("mp4","mkv","webm")&&p.audioFormat in listOf("mp3","m4a","flac","wav"));require(p.videoCodec in listOf("auto","h264","h265","av1"));require(p.duplicateAction in listOf("ask","overwrite","rename","skip"));require(p.proxyMode in listOf("off","system","custom"));require(p.tempDirectory in listOf("internal","external"));require(p.allowedNetwork in listOf("any","wifi","ethernet"));require(p.subtitleFormat in listOf("srt","vtt"));require(Regex("^[a-zA-Z0-9.,_-]{1,120}$").matches(p.subtitleLanguages));for(t in listOf(p.limitStart,p.limitEnd,p.quietStart,p.quietEnd)){require(Regex("[0-2][0-9]:[0-5][0-9]").matches(t));LocalTime.parse(t)}
+  if(p.proxyMode=="custom"){val u=java.net.URI(p.proxyUrl);require(u.scheme in listOf("http","https","socks5")&&!u.host.isNullOrBlank()&&u.userInfo==null){"Invalid proxy URL"}}
+  require(!(p.videoFormat=="webm"&&(p.videoCodec in listOf("h264","h265")||p.embedSubtitles))){"WebM: choose Auto/AV1 and external subtitles"};validateNaming(p.videoNaming);validateNaming(p.audioNaming)
+ }
+ fun validateNaming(s:String){require(s.isNotBlank()&&s.length<=160&&!Regex("[\\\\/:*?\"<>|\\x00-\\x1f]").containsMatchIn(s)){"Invalid filename template"};val rest=s.replace(Regex("\\{(title|artist|album|quality|date)\\}"),"");require('{' !in rest&&'}' !in rest){"Use {title} {artist} {album} {quality} {date}"}}
+ fun fileStem(t:TaskItem,p:Prefs)=Rules.safeName((if(t.mode=="mp3")p.audioNaming else p.videoNaming).replace("{title}",t.title).replace("{artist}",t.artist).replace("{album}",t.album).replace("{quality}",if(t.mode=="mp3")"${t.kbps} kbps"else if(t.height==0)"Best"else"${t.height}p").replace("{date}",java.time.Instant.ofEpochMilli(t.createdAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()))
+ fun network(p:Prefs):List<Pair<String,String?>> {val a=mutableListOf("--socket-timeout" to p.timeoutSeconds.toString(),"--retries" to p.connectionRetries.toString(),"--fragment-retries" to p.connectionRetries.toString(),"--concurrent-fragments" to p.fragments.toString(),"--encoding" to "utf-8");if(p.proxyMode!="system")a.add("--proxy" to if(p.proxyMode=="off")""else p.proxyUrl);if(p.effectiveLimit()>0)a.add("--limit-rate" to "${p.effectiveLimit()}K");return a}
+ fun format(t:TaskItem,p:Prefs):List<Pair<String,String?>> {val a=mutableListOf<Pair<String,String?>>()
+  if(t.mode=="mp3"){a.addAll(listOf("-f" to "bestaudio/best","-x" to null,"--audio-format" to t.extension));if(t.extension in listOf("mp3","m4a"))a.add("--audio-quality" to "${t.kbps}k");if(t.extension !in listOf("mp3","wav")&&p.embedThumbnail)a.add("--embed-thumbnail" to null)}
+  else {val cap="[height<=?${if(t.height>0)t.height.coerceAtMost(2160)else 2160}]";val codec=when(p.videoCodec){"h264"->"[vcodec^=avc]";"h265"->"[vcodec^=hev]";"av1"->"[vcodec^=av01]";else->""};val f=if(t.extension=="webm")"bv$cap$codec[ext=webm]+ba[ext=webm]/b$cap$codec[ext=webm]"else if(t.extension=="mp4"&&p.videoCodec=="auto")"bv$cap[ext=mp4]+ba[ext=m4a]/b$cap[ext=mp4]/bv$cap+ba/b$cap"else"bv$cap$codec+ba/b$cap$codec";a.addAll(listOf("-f" to f,"--merge-output-format" to t.extension,"--remux-video" to t.extension));if(p.downloadSubtitles){a.addAll(listOf("--write-subs" to null,"--write-auto-subs" to null,"--sub-langs" to p.subtitleLanguages,"--sub-format" to "${p.subtitleFormat}/best","--convert-subs" to p.subtitleFormat));if(p.embedSubtitles)a.add("--embed-subs" to null)}}
+  if(p.keepMetadata)a.add("--embed-metadata" to null);if(p.keepThumbnail)a.addAll(listOf("--write-thumbnail" to null,"--convert-thumbnails" to "jpg"));return a
+ }
+ fun apply(r:YoutubeDLRequest,args:List<Pair<String,String?>>){args.forEach{(key,value)->if(value==null)r.addOption(key)else r.addOption(key,value)}}
+}

@@ -5,9 +5,9 @@ namespace Omni.Core;
 public enum JobState { PendingChoice, Queued, Analyzing, Downloading, Processing, RetryWait, Paused, Completed, Failed, Cancelled }
 public enum DownloadMode { Mp4, Mp3 }
 public sealed record BrowserCookie(string Name, string Value, string Domain, string Path, bool Secure, bool HttpOnly, bool HostOnly, double? ExpirationDate);
-public sealed record IntakeRequest(string RequestId, string Url, string Mode, List<BrowserCookie>? Cookies = null);
+public sealed record IntakeRequest(string RequestId, string Url, string Mode, List<BrowserCookie>? Cookies = null, string? OutputFormat = null);
 public sealed record IntakeAck(bool Ok, string RequestId, string State, string? Error = null);
-public sealed class Preferences
+public sealed partial class Preferences
 {
     public int Concurrency { get; set; } = 5;
     public int VideoHeight { get; set; } = 1080; // 0 = best
@@ -24,12 +24,18 @@ public sealed class Preferences
     public string ExtensionId { get; set; } = "";
     public void Validate()
     {
-        if (Concurrency is < 1 or > 5 || !new[] { 128, 192, 256, 320 }.Contains(AudioKbps) || !new[] { 0, 720, 1080, 1440, 2160 }.Contains(VideoHeight)) throw new ArgumentException("品質或併發設定無效");
+        if (Concurrency is < 1 or > 10 || !new[] { 128, 192, 256, 320 }.Contains(AudioKbps) || !new[] { 0, 720, 1080, 1440, 2160 }.Contains(VideoHeight)) throw new ArgumentException("品質或併發設定無效");
         if (new[] { DirectoryFor(DownloadMode.Mp4), DirectoryFor(DownloadMode.Mp3) }.Any(p => !Path.IsPathFullyQualified(p))) throw new ArgumentException("請選擇絕對儲存路徑");
+        ValidateOptions();
     }
 }
 public sealed class DownloadJob
 {
+    public string OutputFormat { get; set; } = "";
+    public Preferences? Options { get; set; }
+    public string? WorkPath { get; set; }
+    [JsonIgnore] public string Extension => string.IsNullOrEmpty(OutputFormat) ? Mode == DownloadMode.Mp3 ? "mp3" : "mp4" : OutputFormat;
+    [JsonIgnore] public string CompletedText => CompletedAt?.ToLocalTime().ToString("yyyy/MM/dd HH:mm") ?? "—";
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string RequestId { get; set; } = "";
     public string? GroupId { get; set; }
@@ -61,8 +67,8 @@ public sealed class DownloadJob
     public bool IsGroupRoot { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? CompletedAt { get; set; }
-    [JsonIgnore] public string Quality => Mode == DownloadMode.Mp3 ? $"{AudioKbps} kbps" : Height == 0 ? "最佳" : $"{Height}p";
-    [JsonIgnore] public string Format => Mode.ToString().ToUpperInvariant();
+    [JsonIgnore] public string Quality => Mode == DownloadMode.Mp3 ? (Extension is "flac" or "wav" ? "Lossless" : $"{AudioKbps} kbps") : Height == 0 ? "最佳" : $"{Height}p";
+    [JsonIgnore] public string Format => Extension.ToUpperInvariant();
     [JsonIgnore] public string StatusText => State switch { JobState.PendingChoice => "等待選擇", JobState.Queued => "排隊中", JobState.Analyzing => "分析中", JobState.Downloading => $"下載中 {Progress:F0}%", JobState.Processing => "處理中", JobState.RetryWait => $"連線異常，將在 {Math.Max(0, (int)((RetryAt ?? DateTimeOffset.UtcNow) - DateTimeOffset.UtcNow).TotalSeconds)} 秒後重試 ({Retry}/3)", JobState.Paused => "已暫停", JobState.Completed => "已完成", JobState.Cancelled => "已取消", _ => "下載失敗" };
     [JsonIgnore] public string SpeedText => Speed <= 0 ? "0 MB/s" : $"{Speed / 1_000_000:F2} MB/s";
     [JsonIgnore] public string SizeText => TotalBytes.HasValue ? $"{TotalBytes / 1_000_000.0:F1} MB" : "—";

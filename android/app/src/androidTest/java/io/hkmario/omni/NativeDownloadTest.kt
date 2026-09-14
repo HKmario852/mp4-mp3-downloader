@@ -19,9 +19,9 @@ class NativeDownloadTest {
         engine.save(engine.prefs.value.copy(wifiOnly=false,musicBrainz=false,tree="",kbps=320))
         engine.serviceRunning=true
         val url="https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4"
-        val ids=listOf(engine.enqueue(url,"mp4"),engine.enqueue(url,"mp3"))
+        val ids=listOf(engine.enqueue(url,"mp4","mp4"),engine.enqueue(url,"mp3","mp3"))+listOf("m4a","flac","wav","mkv").map{engine.enqueue(url,if(it=="mkv")"mp4"else"mp3",it)}
         withTimeout(240000){while(ids.any{engine.get(it).state !in listOf(State.Completed,State.Failed)}){engine.pump();delay(500)}}
-        ids.forEach { id ->val t=engine.get(id);assertEquals(t.error+" "+t.stderr,State.Completed,t.state);val file=File(t.path!!);assertTrue(file.length()>1000);if(t.mode=="mp3"){val tag=Id3.read(file);assertEquals(t.title,tag.text("TIT2"));assertTrue(tag.frames.any{it.id=="TALB"})} }
+        ids.forEach { id ->val t=engine.get(id);assertEquals(t.error+" "+t.stderr,State.Completed,t.state);val file=File(t.path!!);assertTrue(file.length()>1000);if(t.extension=="mp3"){val tag=Id3.read(file);assertEquals(t.title,tag.text("TIT2"));assertTrue(tag.frames.any{it.id=="TALB"})} }
         engine.serviceRunning=false
     }
 }

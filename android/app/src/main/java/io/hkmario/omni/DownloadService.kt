@@ -9,6 +9,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 
+fun playCompletionSound(context:Context,p:Prefs){if(!p.sound||p.isQuiet())return;val type=when(p.soundName){"alarm"->android.media.RingtoneManager.TYPE_ALARM;"notification"->android.media.RingtoneManager.TYPE_NOTIFICATION;else->android.media.RingtoneManager.TYPE_NOTIFICATION};runCatching{android.media.RingtoneManager.getRingtone(context,android.media.RingtoneManager.getDefaultUri(type))?.play()}}
+
 object Notices {
     const val CHANNEL="downloads"
     fun create(context: Context) { context.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL,"下載狀態",NotificationManager.IMPORTANCE_DEFAULT)) }
@@ -16,9 +18,10 @@ object Notices {
     fun ongoing(context: Context,count: Int): Notification {
         val pause=PendingIntent.getBroadcast(context,2,Intent(context,DownloadActionReceiver::class.java).setAction("io.hkmario.omni.PAUSE"),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val cancel=PendingIntent.getBroadcast(context,3,Intent(context,DownloadActionReceiver::class.java).setAction("io.hkmario.omni.CANCEL"),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        return NotificationCompat.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("全能影音下載器").setContentText("$count 個下載任務").setContentIntent(open(context)).setOngoing(true).setOnlyAlertOnce(true).addAction(0,"暫停",pause).addAction(0,"取消",cancel).build()
+        val engine=(context.applicationContext as OmniApp).engine;val tasks=engine.tasks.value.filter{it.state in listOf(State.Downloading,State.Processing)};val progress=tasks.map{it.progress}.average().takeIf{it.isFinite()}?.toInt()?:0
+        return NotificationCompat.Builder(context,CHANNEL).setProgress(if(engine.prefs.value.taskbarProgress&&count>0)100 else 0,progress,false).setSilent(true).setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("全能影音下載器").setContentText("$count 個下載任務").setContentIntent(open(context)).setOngoing(true).setOnlyAlertOnce(true).addAction(0,"暫停",pause).addAction(0,"取消",cancel).build()
     }
-    fun show(context: Context,text: String) {try{NotificationManagerCompat.from(context).notify((System.currentTimeMillis()%100000+100).toInt(),NotificationCompat.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.stat_sys_download_done).setContentTitle("全能影音下載器").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text)).setAutoCancel(true).setContentIntent(open(context)).build())}catch(_: SecurityException){} }
+    fun show(context: Context,text: String) {val p=(context.applicationContext as OmniApp).engine.prefs.value;if(!p.systemNotifications||p.isQuiet())return;try{NotificationManagerCompat.from(context).notify((System.currentTimeMillis()%100000+100).toInt(),NotificationCompat.Builder(context,CHANNEL).setSmallIcon(android.R.drawable.stat_sys_download_done).setContentTitle("全能影音下載器").setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text)).setSilent(true).setAutoCancel(true).setContentIntent(open(context)).build())}catch(_: SecurityException){} }
 }
 class DownloadActionReceiver:BroadcastReceiver() {
     override fun onReceive(context: Context,intent: Intent) {

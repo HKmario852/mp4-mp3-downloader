@@ -1,0 +1,70 @@
+package io.hkmario.omni
+
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.*
+import java.io.File
+
+private data class Setting(val key:String,val zh:String,val en:String,val choices:List<String> = emptyList())
+private val sections=listOf("一般" to "General","下載" to "Downloads","格式" to "Formats","網絡" to "Network","通知" to "Notifications","關於" to "About")
+private val fields=listOf(
+ listOf(Setting("theme","主題","Theme",listOf("dark","light","system")),Setting("language","介面語言","Language",listOf("zh-Hant","en")),Setting("startAtLogin","開機後提示繼續下載","Reminder after device startup"),Setting("autoUpdate","自動檢查更新","Check updates automatically"),Setting("concurrency","同時下載數量（1–10）","Concurrent downloads (1–10)"),Setting("sound","完成提示音","Completion sound"),Setting("audioNaming","音訊檔案命名","Audio filename"),Setting("videoNaming","影片檔案命名","Video filename")),
+ listOf(Setting("limitKiB","速度限制 KiB/s（0 = 不限）","Speed limit KiB/s (0 = unlimited)"),Setting("duplicateAction","檔案重複時","Duplicate files",listOf("ask","overwrite","rename","skip")),Setting("autoRetry","失敗後自動重試","Retry failed downloads"),Setting("retryCount","重試次數","Retry count"),Setting("retrySeconds","重試間隔（秒）","Retry interval (seconds)"),Setting("resumeOnStart","開啟 App 後繼續未完成任務","Resume unfinished tasks when opening app"),Setting("completionAction","完成後（App 在前景時）","After completion (while app is foreground)",listOf("none","file","folder")),Setting("monitorClipboard","前景監察剪貼簿影片連結","Watch clipboard while foreground"),Setting("tempDirectory","暫存位置","Temporary storage",listOf("internal","external")),Setting("cleanFailed","自動清理失敗任務暫存","Clean failed task temporary files")),
+ listOf(Setting("defaultType","預設下載類型","Default download type",listOf("video","audio","ask")),Setting("videoFormat","影片格式","Video format",listOf("mp4","mkv","webm")),Setting("height","影片畫質","Video quality",listOf("0","2160","1440","1080","720")),Setting("audioFormat","音訊格式","Audio format",listOf("mp3","m4a","flac","wav")),Setting("kbps","音訊品質 kbps","Audio quality kbps",listOf("128","192","256","320")),Setting("videoCodec","影片編碼（來源必須提供）","Video codec (must exist in source)",listOf("auto","h264","h265","av1")),Setting("downloadSubtitles","下載字幕","Download subtitles"),Setting("subtitleLanguages","字幕語言（逗號分隔）","Subtitle languages (comma separated)"),Setting("subtitleFormat","字幕格式","Subtitle format",listOf("srt","vtt")),Setting("embedSubtitles","嵌入字幕","Embed subtitles"),Setting("keepThumbnail","保留影片縮圖","Keep thumbnail"),Setting("embedThumbnail","將縮圖嵌入音訊","Embed audio artwork"),Setting("keepMetadata","保留中繼資料","Keep metadata"),Setting("cleanTitle","自動清洗音樂標題後綴","Clean music title suffixes"),Setting("musicBrainz","MusicBrainz 權威中繼資料","MusicBrainz metadata")),
+ listOf(Setting("proxyMode","代理伺服器","Proxy",listOf("off","system","custom")),Setting("proxyUrl","自訂代理網址","Custom proxy URL"),Setting("timeoutSeconds","連線逾時（秒）","Connection timeout (seconds)"),Setting("connectionRetries","連線重試次數","Connection retries"),Setting("fragments","每個任務分段連線數","Fragment connections per task"),Setting("scheduleLimit","啟用限速排程","Scheduled speed limit"),Setting("limitStart","限速開始 HH:mm","Limit starts HH:mm"),Setting("limitEnd","限速結束 HH:mm","Limit ends HH:mm"),Setting("scheduledKiB","排程速度 KiB/s","Scheduled speed KiB/s"),Setting("allowedNetwork","指定網絡","Allowed network",listOf("any","wifi","ethernet")),Setting("wifiOnly","只限 Wi-Fi（可按任務授權）","Wi-Fi only (per-task exception allowed)")),
+ listOf(Setting("notifyComplete","下載完成通知","Download completed"),Setting("notifyFailure","下載失敗通知","Download failed"),Setting("notifyAll","全部任務完成通知","All tasks finished"),Setting("systemNotifications","顯示系統通知","System notifications"),Setting("sound","播放提示音","Play completion sound"),Setting("soundName","提示音效","Sound",listOf("default","notification","alarm")),Setting("taskbarProgress","通知列下載進度","Notification progress"),Setting("quietHours","勿擾時段","Quiet hours"),Setting("quietStart","勿擾開始 HH:mm","Quiet hours start HH:mm"),Setting("quietEnd","勿擾結束 HH:mm","Quiet hours end HH:mm")),
+ listOf(Setting("releaseRepository","GitHub 專案（owner/repository）","GitHub project (owner/repository)"),Setting("autoUpdate","自動檢查更新","Check updates automatically"))
+)
+
+@Composable fun SettingsScreen(engine:Engine,onDirty:(Boolean)->Unit = {}){
+ val p by engine.prefs.collectAsState();val scope=rememberCoroutineScope();val json=remember{Json{encodeDefaults=true}}
+ var values by remember{mutableStateOf(json.parseToJsonElement(json.encodeToString(p)).jsonObject.toMap())}
+ var category by remember{mutableIntStateOf(0)};var advanced by remember{mutableStateOf(false)};var message by remember{mutableStateOf<String?>(null)};var reset by remember{mutableStateOf(false)};var install by remember{mutableStateOf(false)};var busy by remember{mutableStateOf(false)};var folderKey by remember{mutableStateOf("mp4Tree")}
+ SideEffect{onDirty(values!=json.parseToJsonElement(json.encodeToString(p)).jsonObject.toMap())}
+ fun value(key:String)=values[key]?.jsonPrimitive?.contentOrNull?:""
+ fun set(key:String,v:String){val original=json.parseToJsonElement(json.encodeToString(Prefs())).jsonObject[key] as? JsonPrimitive;values=values+(key to when{original?.booleanOrNull!=null->JsonPrimitive(v.toBoolean());original?.intOrNull!=null->(v.toIntOrNull()?.let{JsonPrimitive(it)}?:JsonPrimitive(v));else->JsonPrimitive(v)})}
+ val tree=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()){uri->if(uri!=null)runCatching{engine.context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION);set(folderKey,uri.toString())}.onFailure{message=it.message}}
+ val cookie=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)scope.launch{try{val file=withContext(Dispatchers.IO){val bytes=engine.context.contentResolver.openInputStream(uri)!!.use{input->val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(out.size()<=2*1024*1024){val n=input.read(buffer);if(n<0)break;out.write(buffer,0,n)};out.toByteArray()};require(bytes.size<=2*1024*1024&&bytes.toString(Charsets.UTF_8).lineSequence().take(2).any{it.contains("Netscape")}){"Select a Netscape cookies.txt file"};File(engine.context.filesDir,"auth").mkdirs();File(engine.context.filesDir,"auth/imported-cookies.txt").apply{writeBytes(bytes)}};set("cookieFile",file.absolutePath)}catch(e:Exception){message=e.message}}}
+ fun save(){try{val next=json.decodeFromString<Prefs>(JsonObject(values).toString());next.validate();engine.save(next);message=text(next,"設定已儲存","Settings saved")}catch(e:Exception){message=text(p,"請檢查輸入：","Check input: ")+(e.message?:"")}}
+ Column(Modifier.fillMaxSize()){
+  Text(text(p,"設定","Settings"),fontSize=25.sp)
+  Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){sections.forEachIndexed{i,s->FilterChip(category==i,{category=i},label={Text(text(p,s.first,s.second))})}}
+  Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
+   if(category==0){Text(text(p,"Android 背景下載會顯示通知；返回桌面不會停止下載。系統限制開機自動啟動下載，開機選項會提供繼續提示。","Background downloads keep a notification. Returning home keeps them running. Android restricts automatic downloads at boot; startup provides a reminder."),color=Muted);listOf("mp4Tree" to "影片 / Video","mp3Tree" to "音訊 / Audio").forEach{(key,label)->OutlinedButton(onClick={folderKey=key;tree.launch(null)}){Text("$label · "+if(value(key).isBlank())text(p,"選擇儲存位置","Choose storage")else text(p,"變更儲存位置","Change storage"))}}}
+   fields[category].forEachIndexed{i,f->
+    if(category==2&&i==5)TextButton(onClick={advanced=!advanced}){Text(text(p,if(advanced)"收起進階設定"else"進階設定",if(advanced)"Hide advanced"else"Advanced"))}
+    if(category!=2||i<5||advanced){val label=text(p,f.zh,f.en);val v=value(f.key);val isBool=(values[f.key] as? JsonPrimitive)?.booleanOrNull!=null
+     Card(colors=CardDefaults.cardColors(containerColor=Panel)){Column(Modifier.fillMaxWidth().padding(14.dp)){
+      if(isBool)Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){Text(label,Modifier.weight(1f));Switch(v.toBoolean(),{set(f.key,it.toString())})}
+      else if(f.choices.isNotEmpty()){Text(label);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){f.choices.forEach{choice->FilterChip(v==choice,{set(f.key,choice)},label={Text(choiceLabel(p,f.key,choice))})}}}
+      else OutlinedTextField(v,{set(f.key,it)},label={Text(label)},singleLine=true,modifier=Modifier.fillMaxWidth())
+      if(f.key.endsWith("Naming"))Text(text(p,"範例：","Example: ")+v.replace("{title}","ENDROLL").replace("{artist}","HaThA").replace("{album}","Album").replace("{quality}","1080p").replace("{date}","2026-09-15")+if(f.key=="audioNaming")".${value("audioFormat")}"else".${value("videoFormat")}",color=Muted)
+     }}
+    }
+   }
+   if(category==2)Text(text(p,"MusicBrainz 只採用可靠匹配；會傳送歌曲及歌手名稱。手動標籤不會被覆蓋。FLAC / WAV 不會提升來源音質。","MusicBrainz receives title and artist and applies reliable matches only. Manual tags are protected. FLAC/WAV do not improve source quality."),color=Muted)
+   if(category==3){Text(text(p,"代理關閉不會繞過 VPN。Cookie 可代表登入身份，只會儲存在 App 私有目錄供 YouTube 使用，請勿分享。","Disabling proxy does not bypass a VPN. Cookies represent your login; they stay in app-private storage for YouTube. Do not share them."),color=Muted);OutlinedButton(onClick={cookie.launch(arrayOf("text/*","application/octet-stream"))}){Text(text(p,"匯入自訂 Cookie","Import custom cookies"))};if(value("cookieFile").isNotBlank())TextButton(onClick={set("cookieFile","")}){Text(text(p,"停用自訂 Cookie","Disable custom cookies"))};OutlinedButton(onClick={scope.launch{runCatching{engine.clearNetworkCache()}.onSuccess{message=text(p,"快取已清除","Cache cleared")}.onFailure{message=it.message}}}){Text(text(p,"清除網絡快取","Clear network cache"))}}
+   if(category==4){Text(text(p,"下載期間嘅前景服務通知由 Android 要求，不能由此開關隱藏；通知音量及權限由系統管理。","Android requires an ongoing download notification. Sound volume and notification permissions are controlled by the system."),color=Muted);OutlinedButton(onClick={playCompletionSound(engine.context,p.copy(sound=true,soundName=value("soundName")))}){Text(text(p,"試播提示音","Preview sound"))}}
+   if(category==5){Text("Omni Downloader · ${engine.context.packageManager.getPackageInfo(engine.context.packageName,0).versionName}");OutlinedButton(enabled=!busy,onClick={scope.launch{busy=true;try{message=Updates.check(engine.context,p).second}catch(e:Exception){message=e.message}finally{busy=false}}}){Text(text(p,"檢查更新","Check for updates"))};OutlinedButton(enabled=!busy,onClick={install=true}){Text(text(p,"下載並安裝更新","Download and install update"))};listOf("更新紀錄 / Changelog" to "releases","使用說明 / Help" to "blob/main/README.md","支援與問題回報 / Support" to "issues","私隱政策 / Privacy" to "blob/main/docs/PRIVACY.md","開源授權 / Licenses" to "blob/main/THIRD-PARTY.md").forEach{(label,path)->TextButton(onClick={runCatching{require(Regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$").matches(p.releaseRepository));engine.context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/${p.releaseRepository}/$path")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}.onFailure{message=it.message}}){Text(label)}};Text(text(p,"Android 診斷記錄可在失敗任務內分享。瀏覽器擴充功能及其 ID 連接功能由 Windows 提供。","Share diagnostic logs from failed tasks. Browser extension ID pairing is available on Windows."),color=Muted)}
+  }
+  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){OutlinedButton(onClick={reset=true}){Text(text(p,"還原預設值","Restore defaults"))};Button(enabled=!busy,onClick={save()}){Text(text(p,"儲存變更","Save changes"))}}
+ }
+ if(reset)AlertDialog(onDismissRequest={reset=false},title={Text(text(p,"還原全部設定？","Restore all settings?"))},text={Text(text(p,"下載檔案與歷史紀錄會保留。按儲存變更後生效。","Files and history are kept. Changes apply after saving."))},confirmButton={TextButton(onClick={values=json.parseToJsonElement(json.encodeToString(Prefs())).jsonObject.toMap();reset=false}){Text(text(p,"還原","Restore"))}},dismissButton={TextButton(onClick={reset=false}){Text(text(p,"取消","Cancel"))}})
+ if(install)AlertDialog(onDismissRequest={install=false},title={Text(text(p,"安裝更新？","Install update?"))},text={Text(text(p,"下載及驗證 APK 後，會暫停下載並開啟 Android 安裝確認。","After downloading and verifying the APK, downloads pause and Android asks you to confirm installation."))},confirmButton={TextButton(onClick={install=false;busy=true;scope.launch{try{Updates.install(engine){}}catch(e:Exception){message=e.message}finally{busy=false}}}){Text(text(p,"繼續","Continue"))}},dismissButton={TextButton(onClick={install=false}){Text(text(p,"取消","Cancel"))}})
+ message?.let{m->AlertDialog(onDismissRequest={message=null},text={Text(m)},confirmButton={TextButton(onClick={message=null}){Text("OK")}})}
+}
+private fun choiceLabel(p:Prefs,key:String,v:String):String{if(key=="height")return if(v=="0")text(p,"最佳（最高 4K）","Best (up to 4K)")else if(v=="2160")"4K"else "${v}p";if(p.language=="en")return v;return mapOf("dark" to "深色","light" to "淺色","system" to "跟隨系統","zh-Hant" to "繁體中文","en" to "English","ask" to "每次詢問","overwrite" to "覆蓋","rename" to "自動重新命名","skip" to "跳過","none" to "無操作","file" to "開啟檔案","folder" to "開啟資料夾","internal" to "內部儲存","external" to "外部 App 儲存","video" to "影片","audio" to "純音訊","auto" to "自動","off" to "關閉","custom" to "自訂","any" to "任何網絡","wifi" to "Wi-Fi","ethernet" to "有線網絡")[v]?:v.uppercase()}

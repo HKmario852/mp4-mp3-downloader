@@ -10,6 +10,7 @@ namespace Omni.Windows;
 public partial class MainWindow : Window
 {
     readonly Downloader engine; readonly Store store; readonly DispatcherTimer timer; readonly HashSet<string> choices = []; bool history, tagsPage, recentSelection, failures, collapsed; DownloadMode mode = DownloadMode.Mp4; string groupSignature = "";
+    SettingsView? settingsView; LibraryView? libraryView; string lastClipboard="";
     string? thumbnailUrl;
     bool refreshing;
     string? previewJobId;
@@ -19,16 +20,18 @@ public partial class MainWindow : Window
     public bool AllowClose { get; set; }
     public MainWindow(Downloader engine, Store store)
     {
-        this.engine = engine; this.store = store; InitializeComponent(); SetMode(DownloadMode.Mp4);
+        this.engine = engine; this.store = store; InitializeComponent(); UiKit.Apply(this,engine.Settings); SetMode(engine.Settings.DefaultType=="audio"?DownloadMode.Mp3:DownloadMode.Mp4);
+        engine.NetworkPermitted=DesktopIntegration.NetworkAllowed;engine.ResolveDuplicate=ResolveDuplicate;engine.Completed+=j=>Dispatcher.BeginInvoke(()=>DesktopIntegration.Completion(j,engine.Settings));
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged+=SystemThemeChanged;Closed+=(_,_)=>Microsoft.Win32.SystemEvents.UserPreferenceChanged-=SystemThemeChanged;
         engine.WriteExternalCover = (bytes, path) => Dispatcher.InvokeAsync(() => CoverIO.Write(bytes, path, this)).Task.Unwrap();
         timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) }; timer.Tick += (_, _) => Refresh(); timer.Start();
-        Closing += (_, e) => { if (!AllowClose) { e.Cancel = true; ShowInTaskbar = false; Hide(); } };
+        Closing += (_, e) => { if (!AllowClose) { e.Cancel = true; if(engine.Settings.CloseToTray){ShowInTaskbar=false;Hide();}else _=ExitApplication(); } };
         SizeChanged += (_, _) => { DetailColumn.Width = new GridLength(ActualWidth < 1100 ? 320 : 380); };
-        UpdateNavigation();
+        UpdateNavigation();Loaded+=(_,_)=>ApplyLanguage();
         Refresh(); StatusLabel.Text = engine.ToolsReady ? "已準備就緒" : "請先執行 scripts/Prepare-Tools.ps1 準備 yt-dlp 與 ffmpeg。";
     }
     public void Reveal() { ShowInTaskbar = true; Show(); WindowState = WindowState.Normal; Activate(); if (!NativeFocus.Foreground(new System.Windows.Interop.WindowInteropHelper(this).Handle)) NativeFocus.Flash(new System.Windows.Interop.WindowInteropHelper(this).Handle); }
-    public void OpenHistory() { history = true; tagsPage = false; recentSelection = false; Refresh(); Reveal(); }
+    public async void OpenHistory() { if(!await LeaveSettings())return;history=true;tagsPage=false;recentSelection=false; ShowLibrary(false);Reveal(); }
     public void AskChoice(DownloadJob j)
     {
         if (!choices.Add(j.Id)) return; Reveal();
@@ -42,6 +45,9 @@ public partial class MainWindow : Window
     void Refresh()
     {
         if (!IsInitialized) return;
+        DesktopIntegration.Progress(this,engine);
+        if(engine.Settings.MonitorClipboard&&IsActive)try{if(System.Windows.Clipboard.ContainsText()){var clip=System.Windows.Clipboard.GetText().Trim();if(clip!=lastClipboard){lastClipboard=clip;if(clip.StartsWith("https://")&&Uri.TryCreate(clip,UriKind.Absolute,out _))UrlBox.Text=clip;}}}catch{}
+        if(libraryView is not null){libraryView.Refresh();return;}if(settingsView is not null)return;
         var selected = JobGrid.SelectedItems.Cast<DownloadJob>().Select(x => x.Id).ToHashSet();
         var items = history ? store.Load(true).Where(j => j.State == JobState.Completed && !j.IsGroupRoot && MatchesLibrary(j)).OrderByDescending(j => j.CompletedAt).ToArray() : engine.Jobs.Where(j => !j.IsGroupRoot && j.GroupId is null && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).OrderByDescending(j => j.CreatedAt).ToArray();
         refreshing = true;
@@ -78,7 +84,8 @@ public partial class MainWindow : Window
         GroupsPanel.Visibility = !history && groups.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var exp in GroupCards.Children.OfType<Expander>()) if (exp.IsExpanded && exp.Content is StackPanel groupPanel) foreach (var list in groupPanel.Children.OfType<ListBox>()) list.Items.Refresh();
         RecentPanel.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
-        try { var drive = new DriveInfo(Path.GetPathRoot(DirectoryBox.Text)!); SpaceLabel.Text = $"可用空間 {drive.AvailableFreeSpace / 1_000_000_000.0:F1} GB"; } catch (Exception ex) when (ex is IOException or ArgumentException) { SpaceLabel.Text = "未能取得可用空間"; }
+        try { var drive = new DriveInfo(Path.GetPathRoot(DirectoryBox.Text)!); SpaceLabel.Text = $"可用空間 {drive.AvailableFreeSpace / 1_000_000_000.0:F1} GB"; } catch (Exception ex) when (ex is IOException or ArgumentException) { SpaceLabel.Text = UiKit.T("未能取得可用空間","Free space unavailable"); }
+        ApplyLanguage();
     }
     async void AnalyzeClick(object sender, RoutedEventArgs e)
     {
@@ -92,14 +99,21 @@ public partial class MainWindow : Window
     {
         var selected = QualityBox.SelectedValue is int q ? q : mode == DownloadMode.Mp3 ? engine.Settings.AudioKbps : engine.Settings.VideoHeight;
         var maxHeight = previewInfo?.Formats?.Where(f => f.Video && f.Height <= 2160).Select(f => f.Height ?? 0).DefaultIfEmpty(0).Max() ?? 0;
+        QualityBox.IsEnabled=!(mode==DownloadMode.Mp3&&engine.Settings.AudioFormat is "flac" or "wav");
         var qualities = mode == DownloadMode.Mp3 ? new[] {128,192,256,320} : new[] {720,1080,1440,2160,0}.Where(n => n == 0 || maxHeight == 0 || n <= maxHeight).ToArray();
-        QualityBox.ItemsSource = qualities.Select(n => new QualityOption(n, mode == DownloadMode.Mp3 ? $"{n} kbps" : n == 0 ? "最佳（最高 4K）" : n == 2160 ? "2160p · 4K" : $"{n}p", SizeEstimator.Label(SizeEstimator.Estimate(previewInfo, mode, n)))).ToArray();
+        QualityBox.ItemsSource = qualities.Select(n => new QualityOption(n, mode == DownloadMode.Mp3 ? (engine.Settings.AudioFormat is "flac" or "wav" ? UiKit.T("無損輸出","Lossless output") : $"{n} kbps") : n == 0 ? "最佳（最高 4K）" : n == 2160 ? "2160p · 4K" : $"{n}p", SizeEstimator.Label(EstimateCurrent(n)))).ToArray();
         QualityBox.SelectedValue = qualities.Contains(selected) ? selected : qualities.Last(); UpdateEstimate();
     }
     void QualityChanged(object sender, SelectionChangedEventArgs e) { if (EstimateLabel is not null) UpdateEstimate(); }
+    long? EstimateCurrent(int quality) {
+        var p=engine.Settings;
+        if(mode==DownloadMode.Mp3&&p.AudioFormat is "flac" or "wav")return null;
+        if(mode==DownloadMode.Mp4&&(p.VideoFormat!="mp4"||p.VideoCodec!="auto"))return null;
+        return SizeEstimator.Estimate(previewInfo,mode,quality);
+    }
     void UpdateEstimate()
     {
-        var q = QualityBox.SelectedValue is int n ? n : 0; var bytes = SizeEstimator.Estimate(previewInfo, mode, q);
+        var q = QualityBox.SelectedValue is int n ? n : 0; var bytes = EstimateCurrent(q);
         if (bytes is null) { EstimateLabel.Text = previewInfo is null ? "分析連結後顯示預估大小" : "來源未提供足夠資料，暫時無法估算"; return; }
         var plan = previewInfo is null ? null : VideoSelection.Select(previewInfo, q);
         var detail = mode == DownloadMode.Mp3 ? "按片長及輸出位元率計算，另加封面與標籤" : plan is null ? "實際大小或有差異" : $"{(plan.Video.Height is int h ? $"實際 {h}p · " : "")}{plan.Video.Codec} · 影音串流合計，封裝後略有差異";
@@ -113,17 +127,24 @@ public partial class MainWindow : Window
     {
         try
         {
-            var p = engine.Settings; p.SetDirectory(mode, DirectoryBox.Text);
+            var p = engine.Settings; if(p.DefaultType=="ask"){var chosen=await ChooseFormat(p);if(chosen is null)return;SetMode(chosen.Value);} p.SetDirectory(mode, DirectoryBox.Text);
             if (mode == DownloadMode.Mp3) p.AudioKbps = (int)QualityBox.SelectedValue; else p.VideoHeight = (int)QualityBox.SelectedValue; engine.SaveSettings(p);
-            await engine.Accept(new(Guid.NewGuid().ToString("N"), UrlBox.Text.Trim(), mode == DownloadMode.Mp3 ? "mp3" : "mp4")); history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); StatusLabel.Text = "已加入任務";
+            await engine.Accept(new(Guid.NewGuid().ToString("N"), UrlBox.Text.Trim(), mode == DownloadMode.Mp3 ? "mp3" : "mp4",null,mode==DownloadMode.Mp3?p.AudioFormat:p.VideoFormat)); history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); StatusLabel.Text = "已加入任務";
         }
         catch (Exception ex) { StatusLabel.Text = ex.Message; }
     }
-    void SetMode(DownloadMode value) { mode = value; DirectoryBox.Text = engine.Settings.DirectoryFor(value); DirectoryLabel.Text = value == DownloadMode.Mp3 ? "MP3 儲存位置" : "MP4 儲存位置"; QualityBox.SelectedValue = null; UpdateQualities(); Mp4Button.Background = value == DownloadMode.Mp4 ? (Brush)FindResource("Accent") : new SolidColorBrush(Color.FromRgb(34, 47, 64)); Mp3Button.Background = value == DownloadMode.Mp3 ? (Brush)FindResource("Accent") : new SolidColorBrush(Color.FromRgb(34, 47, 64)); }
+    Task<DownloadMode?> ChooseFormat(Preferences p) {
+        var result=new TaskCompletionSource<DownloadMode?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dialog=new Window{Owner=this,Title=UiKit.T("選擇下載類型","Choose download type"),Width=380,SizeToContent=SizeToContent.Height,WindowStartupLocation=WindowStartupLocation.CenterOwner,Background=Background,Foreground=Foreground,Resources=Resources,ShowInTaskbar=false};
+        var body=new StackPanel{Margin=new Thickness(20)};
+        foreach(var choice in new[]{DownloadMode.Mp4,DownloadMode.Mp3}){var selected=choice;body.Children.Add(UiKit.Button((choice==DownloadMode.Mp3?p.AudioFormat:p.VideoFormat).ToUpperInvariant(),()=>{result.TrySetResult(selected);dialog.Close();},true));}
+        body.Children.Add(UiKit.Button(UiKit.T("取消","Cancel"),()=>dialog.Close()));dialog.Content=body;dialog.Closed+=(_,_)=>result.TrySetResult(null);dialog.ShowDialog();return result.Task;
+    }
+    void SetMode(DownloadMode value) { mode = value; DirectoryBox.Text = engine.Settings.DirectoryFor(value); DirectoryLabel.Text = (value==DownloadMode.Mp3?engine.Settings.AudioFormat:engine.Settings.VideoFormat).ToUpperInvariant()+UiKit.T(" 儲存位置"," storage"); Mp4Button.Content="▣ "+engine.Settings.VideoFormat.ToUpperInvariant(); Mp3Button.Content="♫ "+engine.Settings.AudioFormat.ToUpperInvariant(); QualityBox.SelectedValue = null; UpdateQualities(); Mp4Button.Background = value == DownloadMode.Mp4 ? (Brush)FindResource("Accent") : (Brush)FindResource("Raised"); Mp3Button.Background = value == DownloadMode.Mp3 ? (Brush)FindResource("Accent") : (Brush)FindResource("Raised"); }
     void Mp4Click(object s, RoutedEventArgs e) => SetMode(DownloadMode.Mp4); void Mp3Click(object s, RoutedEventArgs e) => SetMode(DownloadMode.Mp3);
     void BrowseClick(object s, RoutedEventArgs e) { var dialog = new Microsoft.Win32.OpenFolderDialog(); if (dialog.ShowDialog(this) == true) { var p = engine.Settings; p.SetDirectory(mode, dialog.FolderName); engine.SaveSettings(p); DirectoryBox.Text = p.DirectoryFor(mode); } }
-    void NewClick(object s, RoutedEventArgs e) { history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); UrlBox.Focus(); }
-    void QueueClick(object s, RoutedEventArgs e) { history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); }
+    async void NewClick(object s, RoutedEventArgs e) { if(!await LeaveSettings())return;ShowDownloads(); history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); UrlBox.Focus(); }
+    async void QueueClick(object s, RoutedEventArgs e) { if(!await LeaveSettings())return;ShowDownloads(); history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); }
     void HistoryClick(object s, RoutedEventArgs e) => OpenHistory();
     void SearchChanged(object s, TextChangedEventArgs e) { if (IsLoaded) Refresh(); }
     async void ClearClick(object s, RoutedEventArgs e)
@@ -161,15 +182,11 @@ public partial class MainWindow : Window
         var text = (j.Error ?? "此任務未記錄錯誤。") + "\n\n" + (j.Stderr ?? ""); panel.Children.Add(new TextBox { Text = text, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         export.Click += (_, _) => { var save = new Microsoft.Win32.SaveFileDialog { Filter = "診斷日誌|*.log", FileName = "omni-diagnostic.log" }; if (save.ShowDialog(dialog) == true) { File.WriteAllText(save.FileName, ProcessRunner.Redact(text)); Notifications.Show("診斷日誌已匯出"); } }; dialog.Content = panel; dialog.Show();
     }
-    void TagsClick(object s, RoutedEventArgs e)
-    {
-        history = true; tagsPage = true; recentSelection = false; SearchBox.Text = ""; Refresh();
-        StatusLabel.Text = "選取一首或多首 MP3，再按「編輯所選標籤」；亦可雙擊曲目。";
-    }
+    async void TagsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;history=true;tagsPage=true;ShowLibrary(true);}
     void EditTagsClick(object s, RoutedEventArgs e)
     {
         try {
-            var selected = SelectedJobs().Where(j => j.State == JobState.Completed && j.Mode == DownloadMode.Mp3).ToArray();
+            var selected = SelectedJobs().Where(j => j.State == JobState.Completed && j.Extension == "mp3").ToArray();
             if (selected.Length == 0) { StatusLabel.Text = "請先選取一首或多首 MP3。"; return; }
             if (selected.Any(j => !File.Exists(j.FilePath))) { StatusLabel.Text = "部分所選檔案已移動或刪除，請重新選取。"; return; }
             var dialog = new TagWindow(this, store, selected);
@@ -180,18 +197,25 @@ public partial class MainWindow : Window
     void FileDoubleClick(object s, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (ItemsControl.ContainerFromElement((ItemsControl)s, e.OriginalSource as DependencyObject) is not DataGridRow) return;
-        if (SelectedJobs().FirstOrDefault()?.Mode == DownloadMode.Mp3) EditTagsClick(s, e);
+        if (SelectedJobs().FirstOrDefault()?.Extension == "mp3") EditTagsClick(s, e);
         else FolderClick(s, e);
     }
-    void SettingsClick(object s, RoutedEventArgs e) { var dialog = new SettingsWindow(this, engine); dialog.Closed += (_, _) => SetMode(mode); dialog.Show(); }
+    async void SettingsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;libraryView=null;settingsView=new SettingsView(this,engine,()=>{UiKit.Apply(this,engine.Settings);UpdateNavigation();SetMode(mode);ApplyLanguage();});PageHost.Content=settingsView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
+    async Task<bool> LeaveSettings(){if(settingsView is not null&&!await settingsView.CanLeave())return false;settingsView=null;return true;}
+    void ShowLibrary(bool tags){settingsView=null;libraryView=new LibraryView(this,engine,store,tags);PageHost.Content=libraryView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
+    void ShowDownloads(){settingsView=null;libraryView=null;PageHost.Content=null;PageHost.Visibility=Visibility.Collapsed;DownloadArea.Visibility=Details.Visibility=Visibility.Visible;}
+    async Task ExitApplication(){AllowClose=true;await engine.DisposeAsync();System.Windows.Application.Current.Shutdown();}
+    void SystemThemeChanged(object sender,Microsoft.Win32.UserPreferenceChangedEventArgs e)=>Dispatcher.BeginInvoke(()=>UiKit.Apply(this,engine.Settings));
+    async Task<string> ResolveDuplicate(string path,CancellationToken ct){return await Dispatcher.InvokeAsync(async()=>{Reveal();var dialog=Dialogs.Basic(this,UiKit.T("檔案已存在","File already exists"),510,300);var panel=new StackPanel{Margin=new Thickness(20)};panel.Children.Add(UiKit.Text(Path.GetFileName(path),18));var answer=new TaskCompletionSource<string>();foreach(var pair in new[]{("overwrite",UiKit.T("覆蓋","Overwrite")),("rename",UiKit.T("自動重新命名","Auto rename")),("skip",UiKit.T("跳過","Skip"))})panel.Children.Add(UiKit.Button(pair.Item2,()=>{answer.TrySetResult(pair.Item1);dialog.Close();}));dialog.Content=panel;dialog.Closed+=(_,_)=>answer.TrySetResult("skip");using var registration=ct.Register(()=>Dispatcher.BeginInvoke(()=>dialog.Close()));dialog.Show();return await answer.Task;}).Task.Unwrap();}
     void CollapseClick(object s, RoutedEventArgs e) { collapsed = !collapsed; UpdateNavigation(); }
+    void ApplyLanguage(){Localization.Apply(DownloadArea,UiKit.Language=="en");Localization.Apply(Details,UiKit.Language=="en");Localization.Apply(NavFooter,UiKit.Language=="en");}
     void UpdateNavigation()
     {
         NavColumn.Width = new GridLength(collapsed ? 76 : 196); NavFooter.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
         var buttons = new[] { NewNav, QueueNav, HistoryNav, TagsNav, SettingsNav, CollapseNav };
-        var labels = new[] { "新增下載", "下載中", "已下載", "標籤編輯", "設定", "收合側欄" };
+        var labels = UiKit.Language=="en"?new[]{"New download","Downloading","Downloaded","Tag editor","Settings","Collapse sidebar"}:new[]{"新增下載","下載中","已下載","標籤編輯","設定","收合側欄"};
         var paths = new[] { "M12,3 L12,21 M3,12 L21,12", "M12,2 L12,17 M5,10 L12,17 L19,10 M3,18 L3,22 L21,22 L21,18", "M3,12 L9,18 L21,5", "M9,18 L9,5 L21,2 L21,15 M9,8 L21,5 M9,18 C9,22 2,22 2,19 C2,16 9,15 9,18 M21,15 C21,19 14,19 14,16 C14,13 21,12 21,15", "M3,5 L21,5 M3,12 L21,12 M3,19 L21,19 M8,2 L8,8 M16,9 L16,15 M10,16 L10,22", "M3,5 L21,5 M3,12 L21,12 M3,19 L21,19" };
-        for (int i = 0; i < buttons.Length; i++) { var panel = new StackPanel { Orientation = Orientation.Horizontal }; panel.Children.Add(new System.Windows.Shapes.Path { Data = Geometry.Parse(paths[i]), Stroke = Foreground, StrokeThickness = 1.8, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Width = 22, Height = 22, Stretch = Stretch.Uniform }); if (!collapsed && i < 5) panel.Children.Add(new TextBlock { Text = labels[i], Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }); buttons[i].Content = panel; buttons[i].Padding = new Thickness(collapsed ? 0 : 8, 10, collapsed ? 0 : 8, 10); System.Windows.Automation.AutomationProperties.SetName(buttons[i], labels[i]); }
+        for (int i = 0; i < buttons.Length; i++) { var panel = new StackPanel { Orientation = Orientation.Horizontal }; var icon=new System.Windows.Shapes.Path { Data = Geometry.Parse(paths[i]), Stroke = Foreground, StrokeThickness = 1.8, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Width = 22, Height = 22, Stretch = Stretch.Uniform };icon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty,"Text");panel.Children.Add(icon); if (!collapsed && i < 5) panel.Children.Add(new TextBlock { Text = labels[i], Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }); buttons[i].Content = panel; buttons[i].Padding = new Thickness(collapsed ? 0 : 8, 10, collapsed ? 0 : 8, 10); System.Windows.Automation.AutomationProperties.SetName(buttons[i], labels[i]); }
     }
 }
 public static class NativeFocus

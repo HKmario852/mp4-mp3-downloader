@@ -11,6 +11,12 @@ public static class UpdateManager
     public static Version CurrentVersion => typeof(UpdateManager).Assembly.GetName().Version ?? new Version(0,0,0);
     public static Func<Task>? ExitForUpdate { get; set; }
     static UpdateManager() => Client.DefaultRequestHeaders.UserAgent.ParseAdd("OmniDownloader/" + CurrentVersion);
+    public static async Task<string> CheckStatus(string repository)
+    {
+        if(!System.Text.RegularExpressions.Regex.IsMatch(repository,@"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))throw new ArgumentException("Invalid GitHub repository");
+        using var doc=JsonDocument.Parse(await Client.GetStringAsync($"https://api.github.com/repos/{repository}/releases/latest"));var tag=doc.RootElement.GetProperty("tag_name").GetString()??"";
+        return Version.TryParse(tag.TrimStart('v'),out var latest)&&latest>new Version(CurrentVersion.Major,CurrentVersion.Minor,CurrentVersion.Build)?UiKit.T("有新版本：","New version: ")+tag:UiKit.T("目前已是最新版本：","You are up to date: ")+CurrentVersion.ToString(3);
+    }
     public static async Task Check(string repository)
     {
         if (!System.Text.RegularExpressions.Regex.IsMatch(repository, @"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")) return;

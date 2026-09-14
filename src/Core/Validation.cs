@@ -52,6 +52,7 @@ public static partial class Validation
     public static void Request(IntakeRequest r)
     {
         if (!Guid.TryParse(r.RequestId, out _) || r.Mode is not ("mp3" or "mp4")) throw new ArgumentException("無效請求");
+        if (r.OutputFormat is not null && !(r.Mode=="mp3" ? new[]{"mp3","m4a","flac","wav"} : new[]{"mp4","mkv","webm"}).Contains(r.OutputFormat)) throw new ArgumentException("無效輸出格式");
         WebUrl(r.Url, r.Cookies?.Count > 0);
         if (r.Cookies is { Count: > 200 }) throw new ArgumentException("Cookie 數量超限");
         foreach (var c in r.Cookies ?? [])

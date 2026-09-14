@@ -15,14 +15,14 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--library-regression") || args.Contains("--update-regression"))
+        if (args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
                 var path=Path.Combine(output,id+"."+mode.ToString().ToLowerInvariant());
                 if(mode==DownloadMode.Mp3) ProcessRunner.Run(Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),["-y","-f","lavfi","-i","sine=frequency=440:duration=2","-codec:a","libmp3lame","-b:a","320k",path],null,CancellationToken.None).GetAwaiter().GetResult();
                 else File.WriteAllText(path,"selection fixture");
-                store.Save(new DownloadJob{Id=id,RequestId=id,Title=id,Mode=mode,State=JobState.Completed,FilePath=path,Url="https://example.org/"+id,Artist="Mario",Duration=2,AudioKbps=320,CompletedAt=DateTimeOffset.UtcNow});
+                store.Save(new DownloadJob{Id=id,RequestId=id,Title=id,Mode=mode,State=JobState.Completed,FilePath=path,Url="https://example.org/"+id,Thumbnail=new Uri(Path.GetFullPath(Path.Combine(args[1],"..","..","src","Windows","Assets","brand.png"))).AbsoluteUri,TotalBytes=new FileInfo(path).Length,Artist="Mario",Duration=2,AudioKbps=320,CompletedAt=DateTimeOffset.UtcNow});
             }
             var p=store.Preferences();p.Mp3Directory=Path.Combine(output,"music");p.Mp4Directory=Path.Combine(output,"video");store.SavePreferences(p);
         }
@@ -44,6 +44,7 @@ public static class Program
                     if(result.Cover is not null) { var source=Path.Combine(output,"cover-test.mp3");await ProcessRunner.Run(Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),["-y","-f","lavfi","-i","sine=frequency=440:duration=2",source],null,CancellationToken.None);var doc=Id3Document.Read(source);doc.SetText("TIT2",result.Title!);doc.SetCovers([result.Cover,new(File.ReadAllBytes(Path.Combine(Environment.CurrentDirectory,"src/Windows/Assets/brand.png")),"image/png","Test secondary",0)]);await doc.Write(source,Path.Combine(output,"dual-cover-test.mp3"));var read=Id3Document.Read(Path.Combine(output,"dual-cover-test.mp3"));if(read.Frames.Count(f=>f.Id=="APIC")!=2)throw new Exception("Dual cover embedding failed"); }
                     await engine.DisposeAsync();window.Close();app.Shutdown(result.State==MusicLookupState.Matched?0:3);return;
                 }
+                if (args.Contains("--v2-regression")) { await CheckV2(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--update-regression")) { await CheckUpdate(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--library-regression")) { await CheckLibrary(window,engine,store,app,output); await engine.DisposeAsync(); window.AllowClose=true; window.Close(); app.Shutdown(0); return; }
                 if (args.Contains("--ui-regression")) { await CheckUi(window, app, output); await engine.DisposeAsync(); window.AllowClose=true; window.Close(); app.Shutdown(0); return; }
@@ -51,6 +52,7 @@ public static class Program
                 var p = engine.Settings; p.DownloadDirectory = Path.Combine(output, "media"); p.MusicBrainz=args.Contains("--music-download-smoke"); engine.SaveSettings(p);
                 await engine.Accept(new(Guid.NewGuid().ToString(), "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4", "mp3"));
                 await engine.Accept(new(Guid.NewGuid().ToString(), "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4", "mp4"));
+                if(args.Contains("--formats"))foreach(var format in new[]{"m4a","flac","wav","mkv"})await engine.Accept(new(Guid.NewGuid().ToString(),"https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4",format=="mkv"?"mp4":"mp3",null,format));
                 using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
                 while (engine.Jobs.Any(j => j.State is not (JobState.Completed or JobState.Failed or JobState.Cancelled))) await Task.Delay(500, timeout.Token);
                 var results = engine.Jobs.Select(j => new { j.State, j.FilePath, j.Error, j.Stderr, j.MetadataStatus, j.MetadataCheckedAt }).ToArray(); File.WriteAllText(Path.Combine(output, "download-smoke.json"), Json.Encode(results));
@@ -60,6 +62,35 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckV2(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output) {
+        void Check(bool ok,string error){if(!ok)throw new Exception(error);}
+        window.Width=1580;window.Height=980;
+        window.OpenHistory();await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        var host=(ContentControl)window.FindName("PageHost");Check(host.Content is LibraryView,"History does not use embedded library");
+        var library=(LibraryView)host.Content;var grid=Descendants(library).OfType<DataGrid>().Single();
+        Check(grid.Columns.Count==8,"Library needs checkbox, thumbnail/title, format, quality, size, finished, status and menu");
+        Check(grid.Items.Count==3,"Completed files absent");grid.SelectedIndex=0;
+        await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        var checks=Descendants(library).OfType<CheckBox>().Where(c=>c.Content is string x&&x.Contains("全選")).ToArray();Check(checks.Length==1,"Select-all missing");checks[0].IsChecked=true;checks[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Check(Descendants(library).OfType<Button>().Single(b=>b.Content?.ToString()=="移除所選").IsEnabled,"Multi-delete remains disabled");
+        Capture(window,Path.Combine(output,"v2-library-dark.png"));
+        ((Button)window.FindName("SettingsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        Check(host.Content is SettingsView&&!window.OwnedWindows.OfType<SettingsWindow>().Any(),"Settings must be embedded");
+        var settings=(SettingsView)host.Content;Capture(window,Path.Combine(output,"v2-settings-dark.png"));
+        foreach(var name in new[]{"下載","格式","網絡","通知","關於","一般"}) {
+            var button=Descendants(settings).OfType<Button>().First(b=>b.Content?.ToString()?.EndsWith("　"+name)==true);button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+            Check(Descendants(settings).OfType<ScrollViewer>().Any(),"Settings scrolling missing: "+name);
+        }
+        var pref=engine.Settings;pref.Theme="light";UiKit.Apply(window,pref);Capture(window,Path.Combine(output,"v2-settings-light.png"));
+        pref.Theme="dark";UiKit.Apply(window,pref);
+        settings.StartupWriter=_=>{};
+        var language=Descendants(settings).OfType<ComboBox>().First(c=>c.Items.OfType<ComboBoxItem>().Any(i=>i.Tag?.ToString()=="en"));language.SelectedItem=language.Items.OfType<ComboBoxItem>().Single(i=>i.Tag?.ToString()=="en");
+        Check(settings.Save(),"Cannot save language setting");await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        Check(engine.Settings.Language=="en"&&Descendants(settings).OfType<TextBlock>().Any(t=>t.Text=="Settings"),"English labels not refreshed on save");
+        Capture(window,Path.Combine(output,"v2-settings-english.png"));
+
+        File.WriteAllText(Path.Combine(output,"v2-checks.json"),Json.Encode(new{passed=true,checks=new[]{"completed library columns","multi-selection","embedded six-category settings","dark/light rendering"}}));
     }
     static void Capture(Window window, string path)
     {

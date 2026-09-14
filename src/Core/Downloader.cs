@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 namespace Omni.Core;
-public sealed class Downloader : IAsyncDisposable
+public sealed partial class Downloader : IAsyncDisposable
 {
     readonly Store store; readonly string binaryDir, workDir; readonly object gate = new(); readonly SemaphoreSlim intake = new(1);
     readonly List<DownloadJob> jobs; readonly List<DownloadGroup> groups;
@@ -21,6 +21,7 @@ public sealed class Downloader : IAsyncDisposable
         foreach (var j in jobs.Where(j => j.State is not (JobState.Completed or JobState.Cancelled or JobState.Failed or JobState.PendingChoice))) { j.State = JobState.Paused; j.Speed = 0; j.Eta = 0; if (j.HadCredentials) j.Error = "請從擴充功能重新傳送登入憑證"; store.Save(j); }
         // Credentials are intentionally not persisted. Remove only our credential files after a crash.
         foreach (var f in System.IO.Directory.EnumerateFiles(workDir, "cookies.txt", SearchOption.AllDirectories)) File.Delete(f);
+        if(Settings.ResumeOnStart) foreach(var j in jobs.Where(j=>j.State==JobState.Paused&&!j.HadCredentials)){j.State=JobState.Queued;store.Save(j);}
         loop = Task.Run(Pump);
     }
     public DownloadJob[] Jobs { get { lock (gate) return jobs.ToArray(); } }
@@ -42,6 +43,7 @@ public sealed class Downloader : IAsyncDisposable
             var p = Settings; p.Validate();
             var j = new DownloadJob { RequestId = request.RequestId, Url = request.Url, Title = request.Url, Mode = request.Mode == "mp3" ? DownloadMode.Mp3 : DownloadMode.Mp4, Height = p.VideoHeight, AudioKbps = p.AudioKbps, Directory = p.DirectoryFor(request.Mode == "mp3" ? DownloadMode.Mp3 : DownloadMode.Mp4), HadCredentials = request.Cookies?.Count > 0, State = Validation.Compound(request.Url) ? JobState.PendingChoice : JobState.Queued };
             if (Validation.WebUrl(j.Url).AbsolutePath == "/playlist" && Validation.Query(Validation.WebUrl(j.Url)).ContainsKey("list")) { var g = new DownloadGroup { Url = j.Url, Title = "正在載入播放清單" }; j.IsGroupRoot = true; j.GroupId = g.Id; lock (gate) groups.Add(g); store.SaveGroup(g); }
+            j.OutputFormat=request.OutputFormat??request.Mode; j.Options=Json.Decode<Preferences>(Json.Encode(p));
             store.Save(j); if (request.Cookies?.Count > 0) credentials[j.Id] = request.Cookies;
             lock (gate) jobs.Add(j);
             if (j.State == JobState.PendingChoice) ChoiceRequested?.Invoke(j); else Notify?.Invoke("已加入下載佇列：" + j.Title);
@@ -66,10 +68,11 @@ public sealed class Downloader : IAsyncDisposable
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(200));
             while (await timer.WaitForNextTickAsync(lifetime.Token))
             {
+                await ApplyNetworkPolicy();
                 lock (gate)
                 {
                     foreach (var id in running.Where(k => k.Value.task.IsCompleted).Select(k => k.Key).ToArray()) { running[id].ct.Dispose(); running.Remove(id); }
-                    foreach (var j in jobs.Where(j => j.State == JobState.Queued).Take(Math.Max(0, Settings.Concurrency - running.Count)).ToArray())
+                    foreach (var j in jobs.Where(j => j.State == JobState.Queued && (NetworkPermitted?.Invoke(Settings)??true)).Take(Math.Max(0, Settings.Concurrency - running.Count)).ToArray())
                     {
                         j.State = JobState.Analyzing; var ct = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
                         running[j.Id] = (ct, Task.Run(() => Run(j, ct.Token)));
@@ -79,38 +82,35 @@ public sealed class Downloader : IAsyncDisposable
                         var children = jobs.Where(j => j.GroupId == g.Id && !j.IsGroupRoot).ToArray();
                         if (children.Any(j => j.State is not (JobState.Completed or JobState.Failed or JobState.Cancelled))) continue;
                         int failed = children.Count(j => j.State == JobState.Failed) + g.DiscoveryFailures; g.Notified = true; store.SaveGroup(g);
-                        Notify?.Invoke($"播放清單完成：{g.Title}" + (failed > 0 ? $"（含 {failed} 個失敗項目）" : ""));
+                        if(Settings.NotifyAll) Notify?.Invoke($"播放清單完成：{g.Title}" + (failed > 0 ? $"（含 {failed} 個失敗項目）" : ""));
                     }
                 }
+                var busy=Jobs.Any(j=>j.State is JobState.Queued or JobState.Analyzing or JobState.Downloading or JobState.Processing or JobState.RetryWait);
+                if(wasBusy&&!busy&&!Jobs.Any(j=>j.State is JobState.Paused or JobState.PendingChoice)&&Settings.NotifyAll)Notify?.Invoke("全部任務已結束 / All tasks finished"); wasBusy=busy;
             }
         }
         catch (OperationCanceledException) { }
     }
     async Task Run(DownloadJob j, CancellationToken ct)
     {
-        var work = Path.Combine(workDir, j.Id); System.IO.Directory.CreateDirectory(work); var cookiePath = Path.Combine(work, "cookies.txt");
+        var options=j.Options??Settings;
+        var work = JobWork(j); j.WorkPath=work; store.Save(j); System.IO.Directory.CreateDirectory(work); var cookiePath = Path.Combine(work, "cookies.txt");
         try
         {
             if (!ToolsReady) throw new IOException("缺少 yt-dlp.exe 或 ffmpeg.exe，請先執行下載工具準備腳本");
             var auth = new List<string>();
             if (credentials.TryGetValue(j.Id, out var cookies)) { await File.WriteAllTextAsync(cookiePath, Validation.Netscape(cookies), ct); auth.AddRange(["--cookies", cookiePath]); }
             else if (j.HadCredentials) throw new IOException("登入憑證已過期，請從擴充功能重新傳送");
-            if (j.IsGroupRoot) { await Discover(j, auth, ct); return; }
-            var info = await Analyze(j.Url, auth, ct);
+            else if(Settings.CookieFile.Length>0&&new[]{"youtube.com","www.youtube.com","m.youtube.com","youtu.be"}.Contains(new Uri(j.Url).Host)){if(!File.Exists(Settings.CookieFile))throw new IOException("Cookie 檔案不存在 / Cookie file missing");File.Copy(Settings.CookieFile,cookiePath,true);auth.AddRange(["--cookies",cookiePath]);}
+            if (j.IsGroupRoot) { await RetryOperation(j,options,async()=>{await Discover(j,auth,ct);return true;},ct); return; }
+            var info = await RetryOperation(j,options,()=>Analyze(j.Url,auth,ct),ct);
             j.Duration = info.Duration;
             if (!j.IsUserEdited) { j.Title = Settings.CleanTitle ? Validation.CleanTitle(info.Title) : info.Title; j.Artist = info.Artist; j.Album = info.Album; }
             j.Thumbnail = info.Thumbnail; store.Save(j);
-            for (int attempt = 0; ; attempt++)
-            {
-                try { await Download(j, info, work, auth, ct); break; }
-                catch (DownloadException e) when (attempt < 3 && !e.Stderr.Contains("403") && !e.Stderr.Contains("Sign in", StringComparison.OrdinalIgnoreCase))
-                {
-                    j.Retry = attempt + 1; j.State = JobState.RetryWait; j.Speed = 0; j.Eta = 0; int seconds = 1 << (attempt + 1); j.RetryAt = DateTimeOffset.UtcNow.AddSeconds(seconds); store.Save(j); await Task.Delay(TimeSpan.FromSeconds(seconds), ct);
-                }
-            }
+            await RetryOperation(j,options,async()=>{await Download(j,info,work,auth,ct);return true;},ct);
             ct.ThrowIfCancellationRequested(); j.State = JobState.Processing; j.Speed = 0; j.Eta = 0; store.Save(j);
-            var file = System.IO.Directory.GetFiles(work, "media.*").FirstOrDefault(f => Path.GetExtension(f) == (j.Mode == DownloadMode.Mp3 ? ".mp3" : ".mp4")) ?? throw new IOException("下載完成但找不到輸出檔案");
-            if (j.Mode == DownloadMode.Mp3)
+            var file = Path.Combine(work,"media."+j.Extension); if(!File.Exists(file))throw new IOException("下載完成但找不到輸出檔案");
+            if (j.Extension == "mp3")
             {
                 var doc = Id3Document.Read(file);
                 var covers = new List<Cover>();
@@ -122,29 +122,31 @@ public sealed class Downloader : IAsyncDisposable
                     if (metadata.Cover is not null) covers.Add(metadata.Cover);
                     store.Save(j);
                 } else j.MetadataStatus = "MusicBrainz：已在設定關閉";
-                doc.SetText("TIT2", j.Title); doc.SetText("TPE1", j.Artist); doc.SetText("TALB", j.Album);
+                if(options.KeepMetadata){doc.SetText("TIT2", j.Title); doc.SetText("TPE1", j.Artist); doc.SetText("TALB", j.Album);}
                 if (info.Thumbnail is not null) { try { var thumb = await MusicMetadata.Fetch(info.Thumbnail, "Video thumbnail", 3, ct); covers = CoverOrder.ThumbnailFirst(covers,thumb); } catch (Exception e) when ((e is HttpRequestException or IOException or OperationCanceledException) && !ct.IsCancellationRequested) { } }
-                if (covers.Count > 0) doc.SetCovers(covers);
+                if (covers.Count > 0 && options.EmbedThumbnail) doc.SetCovers(covers);
                 var tagged = file + ".tagged"; if (File.Exists(tagged)) File.Delete(tagged); await doc.Write(file, tagged, ct); File.Move(tagged, file, true);
                 System.IO.Directory.CreateDirectory(j.Directory);
-                if (covers.Count > 0 && WriteExternalCover is not null) await WriteExternalCover(covers[0].Bytes, Path.Combine(j.Directory, "cover.jpg"));
+                if (options.KeepThumbnail && covers.Count > 0 && WriteExternalCover is not null) await WriteExternalCover(covers[0].Bytes, Path.Combine(j.Directory, "cover.jpg"));
             }
             ct.ThrowIfCancellationRequested(); System.IO.Directory.CreateDirectory(j.Directory);
-            // Final destination reservation is serialized to prevent same-title races.
-            lock (gate)
-            {
-                ct.ThrowIfCancellationRequested(); var destination = Validation.UniquePath(j.Directory, Validation.SafeName(j.Title), Path.GetExtension(file));
-                File.Move(file, destination); j.FilePath = destination; j.State = JobState.Completed; j.Progress = 100; j.TotalBytes = new FileInfo(destination).Length; j.CompletedAt = DateTimeOffset.UtcNow; store.Save(j);
-            }
-            if (j.GroupId is null) Notify?.Invoke("下載完成：" + j.Title);
+            if(!await PublishFinal(j,file,work,options,ct))return;
+            if (j.GroupId is null && Settings.NotifyComplete) Notify?.Invoke("下載完成：" + j.Title);
+            Completed?.Invoke(j);
         }
         catch (OperationCanceledException) { lock (gate) { if (j.State != JobState.Completed && j.State != JobState.Cancelled) j.State = JobState.Paused; j.Speed = 0; j.Eta = 0; store.Save(j); } }
-        catch (Exception e) { if (j.State == JobState.Cancelled) return; j.State = JobState.Failed; j.Error = e.Message; j.Stderr = e is DownloadException d ? d.Stderr : null; j.Speed = 0; j.Eta = 0; store.Save(j); if (j.IsGroupRoot && j.GroupId is not null) { var g = Groups.First(x => x.Id == j.GroupId); g.DiscoveryComplete = true; g.DiscoveryFailures++; store.SaveGroup(g); } else if (j.GroupId is null) Notify?.Invoke("下載失敗：" + j.Title); }
-        finally { if (File.Exists(cookiePath)) File.Delete(cookiePath); if (j.State is JobState.Completed or JobState.Cancelled or JobState.Failed) credentials.TryRemove(j.Id, out _); }
+        catch (Exception e) { if (j.State is JobState.Cancelled or JobState.Completed) return; j.State = JobState.Failed; j.Error = e.Message; j.Stderr = e is DownloadException d ? d.Stderr : null;WriteFailureLog(j); j.Speed = 0; j.Eta = 0; store.Save(j); if (j.IsGroupRoot && j.GroupId is not null) { var g = Groups.First(x => x.Id == j.GroupId); g.DiscoveryComplete = true; g.DiscoveryFailures++; store.SaveGroup(g); } else if (j.GroupId is null && Settings.NotifyFailure) Notify?.Invoke("下載失敗：" + j.Title); }
+        finally { try { if (File.Exists(cookiePath)) File.Delete(cookiePath); } catch(IOException) { } if (j.State is JobState.Completed or JobState.Cancelled or JobState.Failed) credentials.TryRemove(j.Id, out _); if(j.State==JobState.Completed&&j.Error is null || j.State==JobState.Cancelled || j.State==JobState.Failed&&Settings.CleanFailed) { try { CleanWork(j); } catch(IOException e) { j.Error="暫存清理未完成 / Temporary cleanup incomplete: "+e.Message;store.Save(j); } } }
+    }
+    async Task<T> RetryOperation<T>(DownloadJob j,Preferences p,Func<Task<T>> operation,CancellationToken ct) {
+        for(int attempt=0;;attempt++)try{return await operation();}
+        catch(DownloadException e)when(p.AutoRetry&&attempt<p.RetryCount&&!e.Stderr.Contains("403")&&!e.Stderr.Contains("Sign in",StringComparison.OrdinalIgnoreCase)){
+            j.Retry=attempt+1;j.State=JobState.RetryWait;j.Speed=0;j.Eta=0;var seconds=Math.Min(3600,p.RetrySeconds*Math.Pow(2,attempt));j.RetryAt=DateTimeOffset.UtcNow.AddSeconds(seconds);store.Save(j);await Task.Delay(TimeSpan.FromSeconds(seconds),ct);
+        }
     }
     public async Task<MediaInfo> Analyze(string url, List<string>? auth = null, CancellationToken ct = default)
     {
-        Validation.WebUrl(url); var text = await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), new[] { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--dump-single-json", "--skip-download", "--no-warnings" }.Concat(auth ?? []).Concat(["--", url]), null, ct);
+        Validation.WebUrl(url); var text = await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), new[] { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--dump-single-json", "--skip-download", "--no-warnings" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(auth ?? []).Concat(["--", url]), null, ct);
         using var doc = JsonDocument.Parse(text); var root = doc.RootElement;
         string Get(string key) => root.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
         static double? Number(JsonElement element, string key) => element.TryGetProperty(key, out var n) && n.ValueKind == JsonValueKind.Number && n.TryGetDouble(out var value) ? value : null;
@@ -155,7 +157,7 @@ public sealed class Downloader : IAsyncDisposable
     async Task Discover(DownloadJob parent, List<string> auth, CancellationToken ct)
     {
         var group = Groups.First(g => g.Id == parent.GroupId);
-        var text = await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), new[] { "--ignore-config", "--flat-playlist", "--dump-single-json", "--yes-playlist", "--skip-download" }.Concat(auth).Concat(["--", parent.Url]), null, ct);
+        var text = await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), new[] { "--ignore-config", "--flat-playlist", "--dump-single-json", "--yes-playlist", "--skip-download" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(auth).Concat(["--", parent.Url]), null, ct);
         using var doc = JsonDocument.Parse(text); group.Title = doc.RootElement.GetProperty("title").GetString() ?? "播放清單";
         var directory = Path.Combine(parent.Directory, Validation.SafeName(group.Title)); var seen = new HashSet<string>();
         foreach (var item in doc.RootElement.GetProperty("entries").EnumerateArray())
@@ -165,7 +167,7 @@ public sealed class Downloader : IAsyncDisposable
             var videoId = id.GetString() ?? ""; if (!seen.Add(videoId)) continue;
             var url = item.TryGetProperty("url", out var u) ? u.GetString() : null;
             if (url is null || !url.StartsWith("https://")) url = "https://www.youtube.com/watch?v=" + Uri.EscapeDataString(videoId);
-            var j = new DownloadJob { GroupId = group.Id, RequestId = parent.RequestId + ":" + videoId, Url = url, Title = item.TryGetProperty("title", out var t) ? t.GetString() ?? url : url, Mode = parent.Mode, Height = parent.Height, AudioKbps = parent.AudioKbps, Directory = directory, HadCredentials = parent.HadCredentials };
+            var j = new DownloadJob { GroupId = group.Id, RequestId = parent.RequestId + ":" + videoId, Url = url, Title = item.TryGetProperty("title", out var t) ? t.GetString() ?? url : url, Mode = parent.Mode, OutputFormat=parent.Extension, Options=parent.Options, Height = parent.Height, AudioKbps = parent.AudioKbps, Directory = directory, HadCredentials = parent.HadCredentials };
             if (credentials.TryGetValue(parent.Id, out var c)) credentials[j.Id] = c; store.Save(j); lock (gate) jobs.Add(j);
         }
         group.DiscoveryComplete = true; store.SaveGroup(group); parent.State = JobState.Completed; store.Save(parent);
@@ -173,8 +175,7 @@ public sealed class Downloader : IAsyncDisposable
     async Task Download(DownloadJob j, MediaInfo info, string work, List<string> auth, CancellationToken ct)
     {
         j.State = JobState.Downloading; var args = new List<string> { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--newline", "--continue", "--no-warnings", "--progress-delta", "0.5", "--progress-template", "download:OMNI:%(progress.downloaded_bytes)s|%(progress.total_bytes,progress.total_bytes_estimate)s", "--ffmpeg-location", binaryDir, "-o", Path.Combine(work, "media.%(ext)s") };
-        if (j.Mode == DownloadMode.Mp3) args.AddRange(["-f", "bestaudio/best", "-x", "--audio-format", "mp3", "--audio-quality", j.AudioKbps + "k", "--postprocessor-args", "ExtractAudio+ffmpeg_o:-ar 44100", "--embed-metadata"]);
-        else { var plan = VideoSelection.Select(info, j.Height); args.AddRange(["-f", plan?.Selector ?? VideoSelection.Fallback(j.Height), "--merge-output-format", "mp4", "--remux-video", "mp4"]); }
+        args.AddRange(DownloadOptions.Format(j,j.Options??Settings,info)); args.AddRange(DownloadOptions.Network(Settings)); args.AddRange(["--cache-dir",Path.Combine(workDir,"network-cache")]);
         args.AddRange(auth); args.AddRange(["--", j.Url]); var ema = new SpeedEma(); var watch = Stopwatch.StartNew(); long previous = 0;
         using var sampleCt = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var sampler = Task.Run(async () => { using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500)); try { while (await timer.WaitForNextTickAsync(sampleCt.Token)) { var now = watch.ElapsedMilliseconds; var speed = ema.Sample(j.Bytes, j.TotalBytes, (now - previous) / 1000.0, j.State == JobState.Downloading); previous = now; j.Speed = speed.speed; j.Eta = speed.eta; } } catch (OperationCanceledException) { } });
@@ -196,9 +197,7 @@ public sealed class Downloader : IAsyncDisposable
         {
             Task? task = null; lock (gate) { var j = jobs.FirstOrDefault(x => x.Id == id); if (j is null || j.State is JobState.Completed or JobState.Cancelled) continue; j.State = JobState.Cancelled; store.Save(j); if (running.TryGetValue(id, out var r)) { r.ct.Cancel(); task = r.task; } }
             if (task is not null) await task;
-            var dir = Path.GetFullPath(Path.Combine(workDir, id)); var root = Path.GetFullPath(workDir) + Path.DirectorySeparatorChar;
-            if (!dir.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new IOException("暫存路徑無效");
-            if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true); credentials.TryRemove(id, out _);
+            var removed=Jobs.First(j=>j.Id==id);CleanWork(removed);credentials.TryRemove(id,out _);
         }
     }
     public async ValueTask DisposeAsync() { lifetime.Cancel(); await loop; Task[] tasks; lock (gate) { foreach (var r in running.Values) r.ct.Cancel(); tasks = running.Values.Select(r => r.task).ToArray(); } await Task.WhenAll(tasks); credentials.Clear(); store.Checkpoint(); lifetime.Dispose(); }

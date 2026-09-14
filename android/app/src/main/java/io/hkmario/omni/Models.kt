@@ -6,6 +6,7 @@ import java.util.UUID
 @Serializable enum class State { PendingChoice, Queued, Analyzing, Downloading, Processing, RetryWait, Paused, Completed, Failed, Cancelled }
 @Serializable data class TaskItem(
     val id: String = UUID.randomUUID().toString(), val url: String, val title: String = url,
+    val outputFormat: String = "", val workPath: String? = null, val duration: Double? = null,
     val mode: String = "mp4", val height: Int = 1080, val kbps: Int = 320,
     val state: State = State.Queued, val groupId: String? = null, val groupRoot: Boolean = false,
     val artist: String = "", val album: String = "", val thumbnail: String? = null,
@@ -16,7 +17,29 @@ import java.util.UUID
     val createdAt: Long = System.currentTimeMillis(), val completedAt: Long? = null
 )
 @Serializable data class PlaylistGroup(val id: String = UUID.randomUUID().toString(), val title: String, val discoveryComplete: Boolean = false, val discoveryFailures: Int = 0, val notified: Boolean = false)
-@Serializable data class Prefs(val concurrency: Int = 5, val height: Int = 1080, val kbps: Int = 320, val cleanTitle: Boolean = true, val musicBrainz: Boolean = false, val wifiOnly: Boolean = true, val tree: String = "", val mp3Tree: String? = null, val mp4Tree: String? = null) { fun treeFor(mode: String) = (if(mode == "mp3") mp3Tree else mp4Tree) ?: tree }
+@Serializable data class Prefs(
+ val concurrency:Int=5,val height:Int=1080,val kbps:Int=320,val cleanTitle:Boolean=true,val musicBrainz:Boolean=false,val wifiOnly:Boolean=true,
+ val tree:String="",val mp3Tree:String?=null,val mp4Tree:String?=null,
+ val theme:String="dark",val language:String="zh-Hant",val startAtLogin:Boolean=false,val autoUpdate:Boolean=true,val resumeOnStart:Boolean=false,
+ val monitorClipboard:Boolean=false,val tempDirectory:String="internal",val duplicateAction:String="rename",val autoRetry:Boolean=true,
+ val retryCount:Int=3,val retrySeconds:Int=2,val cleanFailed:Boolean=false,val completionAction:String="none",val defaultType:String="video",
+ val videoFormat:String="mp4",val audioFormat:String="mp3",val videoCodec:String="auto",val downloadSubtitles:Boolean=false,
+ val subtitleLanguages:String="en,zh-Hant",val subtitleFormat:String="srt",val embedSubtitles:Boolean=false,val keepThumbnail:Boolean=true,
+ val embedThumbnail:Boolean=true,val keepMetadata:Boolean=true,val videoNaming:String="{title}",val audioNaming:String="{title}",
+ val proxyMode:String="system",val proxyUrl:String="",val timeoutSeconds:Int=30,val connectionRetries:Int=3,val fragments:Int=1,
+ val limitKiB:Int=0,val scheduleLimit:Boolean=false,val limitStart:String="18:00",val limitEnd:String="23:00",val scheduledKiB:Int=1024,
+ val allowedNetwork:String="any",val cookieFile:String="",val notifyComplete:Boolean=true,val notifyFailure:Boolean=true,val notifyAll:Boolean=true,
+ val systemNotifications:Boolean=true,val sound:Boolean=false,val soundName:String="default",val taskbarProgress:Boolean=true,
+ val quietHours:Boolean=false,val quietStart:String="22:00",val quietEnd:String="08:00",
+ val releaseRepository:String="HKmario852/mp4-mp3-downloader"
+) {
+ fun treeFor(mode:String)=(if(mode=="mp3")mp3Tree else mp4Tree)?:tree
+ fun validate()=Options.validate(this)
+ fun effectiveLimit()=if(scheduleLimit&&Options.inPeriod(limitStart,limitEnd))scheduledKiB else limitKiB
+ fun isQuiet()=quietHours&&Options.inPeriod(quietStart,quietEnd)
+}
+val TaskItem.extension:String get()=outputFormat.ifBlank{mode}
+
 class SessionGrants {
     @Volatile var cellularAll = false
     val tasks = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()

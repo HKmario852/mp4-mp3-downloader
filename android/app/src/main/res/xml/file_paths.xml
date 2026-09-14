@@ -1,1 +1,1 @@
-<paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="logs" path="logs/"/><external-files-path name="media" path="Music/"/></paths>
+<paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="logs" path="logs/"/><external-files-path name="media" path="Music/"/><cache-path name="updates" path="updates/"/></paths>
