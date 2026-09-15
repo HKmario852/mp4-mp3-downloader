@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -15,7 +15,7 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
+        if (args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
@@ -44,6 +44,7 @@ public static class Program
                     if(result.Cover is not null) { var source=Path.Combine(output,"cover-test.mp3");await ProcessRunner.Run(Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),["-y","-f","lavfi","-i","sine=frequency=440:duration=2",source],null,CancellationToken.None);var doc=Id3Document.Read(source);doc.SetText("TIT2",result.Title!);doc.SetCovers([result.Cover,new(File.ReadAllBytes(Path.Combine(Environment.CurrentDirectory,"src/Windows/Assets/brand.png")),"image/png","Test secondary",0)]);await doc.Write(source,Path.Combine(output,"dual-cover-test.mp3"));var read=Id3Document.Read(Path.Combine(output,"dual-cover-test.mp3"));if(read.Frames.Count(f=>f.Id=="APIC")!=2)throw new Exception("Dual cover embedding failed"); }
                     await engine.DisposeAsync();window.Close();app.Shutdown(result.State==MusicLookupState.Matched?0:3);return;
                 }
+                if (args.Contains("--v21-regression")) { await CheckV21(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--v2-regression")) { await CheckV2(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--update-regression")) { await CheckUpdate(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--library-regression")) { await CheckLibrary(window,engine,store,app,output); await engine.DisposeAsync(); window.AllowClose=true; window.Close(); app.Shutdown(0); return; }
@@ -62,6 +63,24 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckV21(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output){
+        void Check(bool ok,string message){if(!ok)throw new Exception(message);}
+        void Click(string name)=>((Button)window.FindName(name)).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        async Task Idle()=>await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        window.Width=1580;window.Height=980;window.OpenHistory();await Idle();Capture(window,Path.Combine(output,"library-icons.png"));
+        Click("TagsNav");await Idle();var host=(ContentControl)window.FindName("PageHost");Check(host.Content is TagEditorView,"Tag page missing");var editor=(TagEditorView)host.Content;for(int i=0;i<100&&editor.Busy;i++)await Task.Delay(30);
+        var title=Descendants(editor).OfType<TextBox>().Single(b=>b.Name=="TIT2");var save=Descendants(editor).OfType<Button>().Single(b=>b.Name=="SaveTags");
+        title.Text="invalid/title";Check(!save.IsEnabled,"Invalid title must prevent save");Capture(window,Path.Combine(output,"tags-validation.png"));
+        title.Text="城市夜色";Check(save.IsEnabled,"Valid change should save");var original=store.Load().Single(j=>j.Id=="music-a").FilePath;
+        save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        for(int i=0;i<100&&store.Load().Single(j=>j.Id=="music-a").Title!="城市夜色";i++)await Task.Delay(50);
+        for(int i=0;i<100&&editor.Busy;i++)await Task.Delay(30);await Idle();Check(store.Load().Single(j=>j.Id=="music-a").Title=="城市夜色","Tag did not save");Check(store.Load().Single(j=>j.Id=="music-a").FilePath==original,"Opt-out rename changed filename");Capture(window,Path.Combine(output,"tag-editor.png"));
+        Click("SettingsNav");await Idle();Check(((FrameworkElement)window.FindName("MainNav")).Visibility==Visibility.Collapsed,"Main sidebar should be hidden in settings");Check(Grid.GetColumn(host)==0,"Settings should fill all columns");
+        Capture(window,Path.Combine(output,"settings-full-width.png"));
+        var p=engine.Settings;p.TextScale=125;p.UiScale=110;UiKit.Apply(window,p);await Idle();Capture(window,Path.Combine(output,"settings-scaled.png"));
+        p.Theme="light";UiKit.Apply(window,p);await Idle();Capture(window,Path.Combine(output,"settings-scaled-light.png"));
+        File.WriteAllText(Path.Combine(output,"checks.json"),Json.Encode(new{passed=true,checks=new[]{"embedded tag editor","invalid title guard","actual tag save","filename preserved","full-width settings","125 percent text and 110 percent UI"}}));
     }
     static async Task CheckV2(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output) {
         void Check(bool ok,string error){if(!ok)throw new Exception(error);}
@@ -94,7 +113,7 @@ public static class Program
     }
     static void Capture(Window window, string path)
     {
-        var visual = (FrameworkElement)window.Content; visual.UpdateLayout(); var width=visual.ActualWidth+visual.Margin.Left+visual.Margin.Right; var height=visual.ActualHeight+visual.Margin.Top+visual.Margin.Bottom; var bitmap = new RenderTargetBitmap((int)width, (int)height, 96, 96, PixelFormats.Pbgra32); var background = new DrawingVisual(); using (var dc = background.RenderOpen()) dc.DrawRectangle(window.Background, null, new Rect(0, 0, width, height)); bitmap.Render(background); bitmap.Render(visual); var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap)); using var f = File.Create(path); png.Save(f);
+        var visual = (FrameworkElement)window.Content; visual.UpdateLayout(); var bounds=visual.LayoutTransform.TransformBounds(new Rect(0,0,visual.ActualWidth,visual.ActualHeight));var width=bounds.Width+visual.Margin.Left+visual.Margin.Right; var height=bounds.Height+visual.Margin.Top+visual.Margin.Bottom; var bitmap = new RenderTargetBitmap((int)width, (int)height, 96, 96, PixelFormats.Pbgra32); var background = new DrawingVisual(); using (var dc = background.RenderOpen()) dc.DrawRectangle(window.Background, null, new Rect(0, 0, width, height)); bitmap.Render(background); bitmap.Render(visual); var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap)); using var f = File.Create(path); png.Save(f);
     }
     static async Task CheckUi(MainWindow window, System.Windows.Application app, string output)
     {

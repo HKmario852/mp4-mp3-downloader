@@ -20,7 +20,7 @@ import java.util.UUID
 @Serializable data class Prefs(
  val concurrency:Int=5,val height:Int=1080,val kbps:Int=320,val cleanTitle:Boolean=true,val musicBrainz:Boolean=false,val wifiOnly:Boolean=true,
  val tree:String="",val mp3Tree:String?=null,val mp4Tree:String?=null,
- val theme:String="dark",val language:String="zh-Hant",val startAtLogin:Boolean=false,val autoUpdate:Boolean=true,val resumeOnStart:Boolean=false,
+ val textScale:Int=100,val uiScale:Int=100,val theme:String="dark",val language:String="zh-Hant",val startAtLogin:Boolean=false,val autoUpdate:Boolean=true,val resumeOnStart:Boolean=false,
  val monitorClipboard:Boolean=false,val tempDirectory:String="internal",val duplicateAction:String="rename",val autoRetry:Boolean=true,
  val retryCount:Int=3,val retrySeconds:Int=2,val cleanFailed:Boolean=false,val completionAction:String="none",val defaultType:String="video",
  val videoFormat:String="mp4",val audioFormat:String="mp3",val videoCodec:String="auto",val downloadSubtitles:Boolean=false,

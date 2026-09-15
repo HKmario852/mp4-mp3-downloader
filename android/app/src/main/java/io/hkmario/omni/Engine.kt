@@ -29,9 +29,10 @@ class Engine(val context: Context) {
     val spaceQuestions=MutableStateFlow<List<SpaceQuestion>>(emptyList())
     private val active=ConcurrentHashMap<String,Job>();@Volatile var serviceRunning=false
     init { UiLanguage.value=prefs.value.language;mutable.value.forEach(db::save);scope.launch{try{YoutubeDL.getInstance().init(context);FFmpeg.getInstance().init(context);ready.complete(Unit)}catch(e: Exception){initError.value="下載引擎初始化失敗：${e.message}";ready.completeExceptionally(e)}} }
-    @Synchronized fun update(id: String,transform: (TaskItem)->TaskItem) { mutable.value=mutable.value.map{if(it.id==id)transform(it).also(db::save)else it} }
+    val tagImports=java.util.concurrent.ConcurrentHashMap<String,TaskItem>()
+    @Synchronized fun update(id: String,transform: (TaskItem)->TaskItem) { if(tagImports.containsKey(id)){tagImports[id]=transform(tagImports.getValue(id));return};mutable.value=mutable.value.map{if(it.id==id)transform(it).also(db::save)else it} }
     @Synchronized private fun add(t: TaskItem) { db.save(t);mutable.value=mutable.value+t }
-    fun get(id: String)=tasks.value.first{it.id==id}
+    fun get(id: String)=tagImports[id]?:tasks.value.first{it.id==id}
     fun save(p: Prefs) { p.validate();prefs.value=p;UiLanguage.value=p.language;shared.edit().putString("value",db.json.encodeToString(p)).apply() }
     fun compound(url: String): Boolean { val uri=Uri.parse(url);return uri.getQueryParameter("v")!=null&&uri.getQueryParameter("list")!=null }
     fun enqueue(url: String,mode: String,outputFormat:String?=null): String { require(Rules.validUrl(url)){"請輸入有效 HTTPS 影片網址"};require(mode in listOf("mp3","mp4"));val p=prefs.value;require(outputFormat==null||outputFormat in if(mode=="mp3")listOf("mp3","m4a","flac","wav")else listOf("mp4","mkv","webm"));var t=TaskItem(url=url,mode=mode,outputFormat=outputFormat?:if(mode=="mp3")p.audioFormat else p.videoFormat,height=p.height,kbps=p.kbps,targetTree=p.treeFor(mode),state=if(compound(url))State.PendingChoice else State.Queued);val uri=Uri.parse(url);if(uri.path=="/playlist"&&uri.getQueryParameter("list")!=null){val g=PlaylistGroup(title="正在載入播放清單");synchronized(this){groups.value=groups.value+g};db.save(g);t=t.copy(groupId=g.id,groupRoot=true)};add(t);return t.id }

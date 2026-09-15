@@ -23,12 +23,13 @@ class LibrarySettingsTest {
   compose.onNodeWithText("設定已儲存").assertExists();compose.onNodeWithText("OK").performClick()
   compose.runOnIdle{assertEquals("light",engine.prefs.value.theme)}
   screenshot("v2-android-settings-light.png")
+  compose.onNodeWithTag("back-menu").performClick()
   compose.onNodeWithTag("nav-history").performClick()
   compose.onNodeWithText("管理影片、音訊及標籤").assertExists()
   screenshot("v2-android-library.png")
   compose.onNodeWithTag("nav-settings").performClick()
   compose.onNodeWithText("深色").performClick()
-  compose.onNodeWithTag("nav-history").performClick()
+  compose.onNodeWithTag("back-menu").performClick()
   compose.onNodeWithText("未儲存變更").assertExists();compose.onNodeWithText("離開").performClick()
   compose.runOnIdle{assertEquals("light",engine.prefs.value.theme)}
  }

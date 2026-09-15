@@ -36,15 +36,36 @@ public sealed class Id3Document
     }
     public string Text(string id)
     {
+        if (id == "COMM") return Comment();
         var b = Frames.FirstOrDefault(f => f.Id == id)?.Data; if (b is null || b.Length < 2) return "";
         return (b[0] switch { 0 => Encoding.Latin1.GetString(b, 1, b.Length - 1), 1 => DecodeUtf16(b.AsSpan(1)), 2 => Encoding.BigEndianUnicode.GetString(b, 1, b.Length - 1), 3 => Encoding.UTF8.GetString(b, 1, b.Length - 1), _ => "" }).TrimEnd('\0');
     }
     static string DecodeUtf16(ReadOnlySpan<byte> b) => b.Length >= 2 && b[0] == 0xfe && b[1] == 0xff ? Encoding.BigEndianUnicode.GetString(b[2..]) : Encoding.Unicode.GetString(b.Length >= 2 && b[0] == 0xff && b[1] == 0xfe ? b[2..] : b);
     public void SetText(string id, string value)
     {
+        if(id=="COMM"){SetRaw("COMM",[1, (byte)'e',(byte)'n',(byte)'g',0xff,0xfe,0,0,0xff,0xfe,..Encoding.Unicode.GetBytes(value),0,0]);return;}
         if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^T[A-Z0-9]{3}$") || id == "TXXX") throw new ArgumentException("此欄位需要進階 Raw Frame 編輯");
         // Keep a real empty frame, even when the string is empty.
         SetRaw(id, [1, 0xff, 0xfe, .. Encoding.Unicode.GetBytes(value), 0, 0]);
+    }
+    public string Comment()
+    {
+        var b=Frames.FirstOrDefault(f=>f.Id=="COMM")?.Data;
+        if(b is null || b.Length<5)return "";
+        int start=4,step=b[0] is 1 or 2?2:1;
+        for(;start+step<=b.Length;start+=step)if(b[start]==0&&(step==1||b[start+1]==0)){start+=step;break;}
+        return (b[0] switch{0=>Encoding.Latin1.GetString(b.AsSpan(start)),1=>DecodeUtf16(b.AsSpan(start)),2=>Encoding.BigEndianUnicode.GetString(b.AsSpan(start)),3=>Encoding.UTF8.GetString(b.AsSpan(start)),_=>""}).TrimEnd('\0');
+    }
+    public List<Cover> GetCovers()
+    {
+        var result=new List<Cover>();
+        foreach(var f in Frames.Where(f=>f.Id=="APIC")){
+            var b=f.Data;if(b.Length<5)continue;int end=Array.IndexOf(b,(byte)0,1);if(end<0||end+2>=b.Length)continue;
+            var mime=Encoding.ASCII.GetString(b,1,end-1);byte type=b[end+1];int start=end+2,step=b[0] is 1 or 2?2:1;
+            for(;start+step<=b.Length;start+=step)if(b[start]==0&&(step==1||b[start+1]==0)){start+=step;break;}
+            if(start<b.Length)result.Add(new(b[start..],mime,"",type));
+        }
+        return result;
     }
     public void SetRaw(string id, byte[] payload)
     {
@@ -75,11 +96,11 @@ public sealed class Id3Document
         await input.CopyToAsync(output, ct); await output.FlushAsync(ct); output.Flush(true);
     }
 }
-public sealed record TagDelta(Dictionary<string, string> Text, Dictionary<string, string>? RawBase64 = null, List<Cover>? Covers = null);
+public sealed record TagDelta(Dictionary<string, string> Text, Dictionary<string, string>? RawBase64 = null, List<Cover>? Covers = null, bool RenameFile = true);
 public sealed class TagEditor(Store store)
 {
     static readonly SemaphoreSlim serial = new(1);
-    public async Task Apply(IReadOnlyList<DownloadJob> jobs, TagDelta delta)
+    public async Task Apply(IReadOnlyList<DownloadJob> jobs, TagDelta delta, bool persist = true)
     {
         if (delta.Text.TryGetValue("TIT2", out var title) && Validation.TitleError(title) is { } error) throw new ArgumentException(error);
         if (delta.RawBase64?.Keys.Any(k => k.Split('#')[0] == "TIT2") == true) throw new ArgumentException("請在 Title 欄位修改歌曲名");
@@ -94,14 +115,14 @@ public sealed class TagEditor(Store store)
                 foreach (var (id, encoded) in delta.RawBase64 ?? []) doc.SetRaw(id, Convert.FromBase64String(encoded));
                 if (delta.Covers is not null) doc.SetCovers(delta.Covers);
                 var temp = source + ".edit-" + Guid.NewGuid().ToString("N"); var backup = source + ".backup-" + Guid.NewGuid().ToString("N"); string destination = source;
-                if (delta.Text.TryGetValue("TIT2", out title) && title.Length > 0 && !string.Equals(Path.GetFileNameWithoutExtension(source), title, StringComparison.Ordinal)) destination = Validation.UniquePath(Path.GetDirectoryName(source)!, title, ".mp3");
+                if (delta.RenameFile && delta.Text.TryGetValue("TIT2", out title) && title.Length > 0 && !string.Equals(Path.GetFileNameWithoutExtension(source), title, StringComparison.Ordinal)) destination = Validation.UniquePath(Path.GetDirectoryName(source)!, title, ".mp3");
                 try
                 {
                     await doc.Write(source, temp); File.Replace(temp, source, backup);
                     try { if (destination != source) File.Move(source, destination); }
                     catch { File.Replace(backup, source, null); throw; }
                     var old = Json.Encode(j);
-                    try { j.FilePath = destination; if (delta.Text.ContainsKey("TIT2")) j.Title = doc.Text("TIT2"); if (delta.Text.ContainsKey("TPE1")) j.Artist = doc.Text("TPE1"); if (delta.Text.ContainsKey("TALB")) j.Album = doc.Text("TALB"); j.IsUserEdited = true; store.Save(j); }
+                    try { j.FilePath = destination; if (delta.Text.ContainsKey("TIT2")) j.Title = doc.Text("TIT2"); if (delta.Text.ContainsKey("TPE1")) j.Artist = doc.Text("TPE1"); if (delta.Text.ContainsKey("TALB")) j.Album = doc.Text("TALB"); j.IsUserEdited = true; if(persist) store.Save(j); }
                     catch { if (destination != source) File.Move(destination, source); File.Replace(backup, source, null); var previous = Json.Decode<DownloadJob>(old); j.FilePath = previous.FilePath; j.Title = previous.Title; j.Artist = previous.Artist; j.Album = previous.Album; j.IsUserEdited = previous.IsUserEdited; throw; }
                     File.Delete(backup);
                 }

@@ -4,6 +4,8 @@ namespace Omni.Core;
 
 public sealed partial class Preferences
 {
+    public int TextScale { get; set; } = 100;
+    public int UiScale { get; set; } = 100;
     public string Theme { get; set; } = "dark";
     public string Language { get; set; } = "zh-Hant";
     public bool StartAtLogin { get; set; }
@@ -58,6 +60,7 @@ public sealed partial class Preferences
     public int EffectiveLimit(DateTime now) => ScheduleLimit && DownloadOptions.InPeriod(now, LimitStart, LimitEnd) ? ScheduledKiB : LimitKiB;
     void ValidateOptions()
     {
+        if(TextScale is < 80 or > 150 || UiScale is < 80 or > 150) throw new ArgumentException("縮放必須介乎 80–150% / Scale must be 80–150%");
         static void One(string value, params string[] allowed) { if (!allowed.Contains(value)) throw new ArgumentException("設定選項無效 / Invalid setting: " + value); }
         One(Theme,"dark","light","system"); One(Language,"zh-Hant","en"); One(DuplicateAction,"ask","overwrite","rename","skip");
         One(DefaultType,"video","audio","ask"); One(VideoFormat,"mp4","mkv","webm"); One(AudioFormat,"mp3","m4a","flac","wav");

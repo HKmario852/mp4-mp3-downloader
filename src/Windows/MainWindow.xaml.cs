@@ -10,14 +10,14 @@ namespace Omni.Windows;
 public partial class MainWindow : Window
 {
     readonly Downloader engine; readonly Store store; readonly DispatcherTimer timer; readonly HashSet<string> choices = []; bool history, tagsPage, recentSelection, failures, collapsed; DownloadMode mode = DownloadMode.Mp4; string groupSignature = "";
-    SettingsView? settingsView; LibraryView? libraryView; string lastClipboard="";
+    TagEditorView? tagEditorView; SettingsView? settingsView; LibraryView? libraryView; string lastClipboard="";
     string? thumbnailUrl;
     bool refreshing;
     string? previewJobId;
     MediaInfo? previewInfo;
     readonly Dictionary<string, MediaInfo> mediaCache = new();
     int analysisVersion;
-    public bool AllowClose { get; set; }
+    bool closePrompt; public bool AllowClose { get; set; }
     public MainWindow(Downloader engine, Store store)
     {
         this.engine = engine; this.store = store; InitializeComponent(); UiKit.Apply(this,engine.Settings); SetMode(engine.Settings.DefaultType=="audio"?DownloadMode.Mp3:DownloadMode.Mp4);
@@ -25,7 +25,7 @@ public partial class MainWindow : Window
         Microsoft.Win32.SystemEvents.UserPreferenceChanged+=SystemThemeChanged;Closed+=(_,_)=>Microsoft.Win32.SystemEvents.UserPreferenceChanged-=SystemThemeChanged;
         engine.WriteExternalCover = (bytes, path) => Dispatcher.InvokeAsync(() => CoverIO.Write(bytes, path, this)).Task.Unwrap();
         timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) }; timer.Tick += (_, _) => Refresh(); timer.Start();
-        Closing += (_, e) => { if (!AllowClose) { e.Cancel = true; if(engine.Settings.CloseToTray){ShowInTaskbar=false;Hide();}else _=ExitApplication(); } };
+        Closing += async (_, e) => { if (!AllowClose) { e.Cancel = true;if(closePrompt||tagEditorView?.Busy==true)return;closePrompt=true;try{if(!await LeaveSettings())return;ShowDownloads();if(engine.Settings.CloseToTray){ShowInTaskbar=false;Hide();}else await ExitApplication();}finally{closePrompt=false;} } };
         SizeChanged += (_, _) => { DetailColumn.Width = new GridLength(ActualWidth < 1100 ? 320 : 380); };
         UpdateNavigation();Loaded+=(_,_)=>ApplyLanguage();
         Refresh(); StatusLabel.Text = engine.ToolsReady ? "已準備就緒" : "請先執行 scripts/Prepare-Tools.ps1 準備 yt-dlp 與 ffmpeg。";
@@ -47,6 +47,7 @@ public partial class MainWindow : Window
         if (!IsInitialized) return;
         DesktopIntegration.Progress(this,engine);
         if(engine.Settings.MonitorClipboard&&IsActive)try{if(System.Windows.Clipboard.ContainsText()){var clip=System.Windows.Clipboard.GetText().Trim();if(clip!=lastClipboard){lastClipboard=clip;if(clip.StartsWith("https://")&&Uri.TryCreate(clip,UriKind.Absolute,out _))UrlBox.Text=clip;}}}catch{}
+        if(tagEditorView is not null)return;
         if(libraryView is not null){libraryView.Refresh();return;}if(settingsView is not null)return;
         var selected = JobGrid.SelectedItems.Cast<DownloadJob>().Select(x => x.Id).ToHashSet();
         var items = history ? store.Load(true).Where(j => j.State == JobState.Completed && !j.IsGroupRoot && MatchesLibrary(j)).OrderByDescending(j => j.CompletedAt).ToArray() : engine.Jobs.Where(j => !j.IsGroupRoot && j.GroupId is null && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).OrderByDescending(j => j.CreatedAt).ToArray();
@@ -182,16 +183,14 @@ public partial class MainWindow : Window
         var text = (j.Error ?? "此任務未記錄錯誤。") + "\n\n" + (j.Stderr ?? ""); panel.Children.Add(new TextBox { Text = text, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         export.Click += (_, _) => { var save = new Microsoft.Win32.SaveFileDialog { Filter = "診斷日誌|*.log", FileName = "omni-diagnostic.log" }; if (save.ShowDialog(dialog) == true) { File.WriteAllText(save.FileName, ProcessRunner.Redact(text)); Notifications.Show("診斷日誌已匯出"); } }; dialog.Content = panel; dialog.Show();
     }
-    async void TagsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;history=true;tagsPage=true;ShowLibrary(true);}
+    async void TagsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;history=true;tagsPage=true;ShowTagEditor();}
     void EditTagsClick(object s, RoutedEventArgs e)
     {
         try {
             var selected = SelectedJobs().Where(j => j.State == JobState.Completed && j.Extension == "mp3").ToArray();
             if (selected.Length == 0) { StatusLabel.Text = "請先選取一首或多首 MP3。"; return; }
             if (selected.Any(j => !File.Exists(j.FilePath))) { StatusLabel.Text = "部分所選檔案已移動或刪除，請重新選取。"; return; }
-            var dialog = new TagWindow(this, store, selected);
-            dialog.Closed += (_, _) => { engine.ReloadEditedJobs(selected.Select(j => j.Id)); Refresh(); };
-            dialog.Show();
+            _=OpenTagSelection(selected);
         } catch (Exception ex) { StatusLabel.Text = "無法開啟標籤編輯：" + ex.Message; }
     }
     void FileDoubleClick(object s, System.Windows.Input.MouseButtonEventArgs e)
@@ -200,10 +199,13 @@ public partial class MainWindow : Window
         if (SelectedJobs().FirstOrDefault()?.Extension == "mp3") EditTagsClick(s, e);
         else FolderClick(s, e);
     }
-    async void SettingsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;libraryView=null;settingsView=new SettingsView(this,engine,()=>{UiKit.Apply(this,engine.Settings);UpdateNavigation();SetMode(mode);ApplyLanguage();});PageHost.Content=settingsView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
-    async Task<bool> LeaveSettings(){if(settingsView is not null&&!await settingsView.CanLeave())return false;settingsView=null;return true;}
-    void ShowLibrary(bool tags){settingsView=null;libraryView=new LibraryView(this,engine,store,tags);PageHost.Content=libraryView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
-    void ShowDownloads(){settingsView=null;libraryView=null;PageHost.Content=null;PageHost.Visibility=Visibility.Collapsed;DownloadArea.Visibility=Details.Visibility=Visibility.Visible;}
+    async void SettingsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;tagEditorView=null;libraryView=null;settingsView=new SettingsView(this,engine,()=>{UiKit.Apply(this,engine.Settings);UpdateNavigation();SetMode(mode);ApplyLanguage();});settingsView.Back=async()=>{if(await LeaveSettings())ShowDownloads();};MainNav.Visibility=Visibility.Collapsed;NavColumn.Width=new GridLength(0);Grid.SetColumn(PageHost,0);Grid.SetColumnSpan(PageHost,3);PageHost.Content=settingsView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
+    async Task<bool> LeaveSettings(){if(tagEditorView is not null&&!await tagEditorView.CanLeave())return false;if(settingsView is not null&&!await settingsView.CanLeave())return false;settingsView=null;return true;}
+    void RestoreMenu(){MainNav.Visibility=Visibility.Visible;Grid.SetColumn(PageHost,1);Grid.SetColumnSpan(PageHost,2);UpdateNavigation();}
+    async Task OpenTagSelection(DownloadJob[] jobs){if(await LeaveSettings())ShowTagEditor(jobs);}
+    void ShowTagEditor(DownloadJob[]? jobs=null){RestoreMenu();settingsView=null;libraryView=null;tagEditorView=new TagEditorView(this,engine,store,jobs);PageHost.Content=tagEditorView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
+    void ShowLibrary(bool tags){RestoreMenu();tagEditorView=null;settingsView=null;libraryView=new LibraryView(this,engine,store,tags);libraryView.OpenTagEditor=jobs=>_=OpenTagSelection(jobs);PageHost.Content=libraryView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
+    void ShowDownloads(){RestoreMenu();tagEditorView=null;settingsView=null;libraryView=null;PageHost.Content=null;PageHost.Visibility=Visibility.Collapsed;DownloadArea.Visibility=Details.Visibility=Visibility.Visible;}
     async Task ExitApplication(){AllowClose=true;await engine.DisposeAsync();System.Windows.Application.Current.Shutdown();}
     void SystemThemeChanged(object sender,Microsoft.Win32.UserPreferenceChangedEventArgs e)=>Dispatcher.BeginInvoke(()=>UiKit.Apply(this,engine.Settings));
     async Task<string> ResolveDuplicate(string path,CancellationToken ct){return await Dispatcher.InvokeAsync(async()=>{Reveal();var dialog=Dialogs.Basic(this,UiKit.T("檔案已存在","File already exists"),510,300);var panel=new StackPanel{Margin=new Thickness(20)};panel.Children.Add(UiKit.Text(Path.GetFileName(path),18));var answer=new TaskCompletionSource<string>();foreach(var pair in new[]{("overwrite",UiKit.T("覆蓋","Overwrite")),("rename",UiKit.T("自動重新命名","Auto rename")),("skip",UiKit.T("跳過","Skip"))})panel.Children.Add(UiKit.Button(pair.Item2,()=>{answer.TrySetResult(pair.Item1);dialog.Close();}));dialog.Content=panel;dialog.Closed+=(_,_)=>answer.TrySetResult("skip");using var registration=ct.Register(()=>Dispatcher.BeginInvoke(()=>dialog.Close()));dialog.Show();return await answer.Task;}).Task.Unwrap();}
@@ -211,7 +213,8 @@ public partial class MainWindow : Window
     void ApplyLanguage(){Localization.Apply(DownloadArea,UiKit.Language=="en");Localization.Apply(Details,UiKit.Language=="en");Localization.Apply(NavFooter,UiKit.Language=="en");}
     void UpdateNavigation()
     {
-        NavColumn.Width = new GridLength(collapsed ? 76 : 196); NavFooter.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        NavColumn.Width = new GridLength(settingsView is not null?0:collapsed ? 76 : 196); NavFooter.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        RemoveQueueButton.Content=UiKit.IconLabel("delete",UiKit.T("移除","Remove"));FolderButton.Content=UiKit.IconLabel("folder",UiKit.T("開啟檔案位置","Show in folder"));EditTagsButton.Content=UiKit.IconLabel("tag",UiKit.T("編輯所選標籤","Edit selected tags"));
         var buttons = new[] { NewNav, QueueNav, HistoryNav, TagsNav, SettingsNav, CollapseNav };
         var labels = UiKit.Language=="en"?new[]{"New download","Downloading","Downloaded","Tag editor","Settings","Collapse sidebar"}:new[]{"新增下載","下載中","已下載","標籤編輯","設定","收合側欄"};
         var paths = new[] { "M12,3 L12,21 M3,12 L21,12", "M12,2 L12,17 M5,10 L12,17 L19,10 M3,18 L3,22 L21,22 L21,18", "M3,12 L9,18 L21,5", "M9,18 L9,5 L21,2 L21,15 M9,8 L21,5 M9,18 C9,22 2,22 2,19 C2,16 9,15 9,18 M21,15 C21,19 14,19 14,16 C14,13 21,12 21,15", "M3,5 L21,5 M3,12 L21,12 M3,19 L21,19 M8,2 L8,8 M16,9 L16,15 M10,16 L10,22", "M3,5 L21,5 M3,12 L21,12 M3,19 L21,19" };
