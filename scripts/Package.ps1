@@ -19,5 +19,5 @@ Make-Zip $zip $windows @(Get-ChildItem -LiteralPath $windows -File | Where-Objec
 Make-Zip (Join-Path $out 'OmniDownloader-browser-extension.zip') (Join-Path $root 'extension') @(Get-ChildItem -LiteralPath (Join-Path $root 'extension') -File)
 $files=Get-ChildItem -LiteralPath $root -Recurse -File -Force | Where-Object {$_.FullName.Substring($root.Length) -notmatch '[\\/](\.git|\.tools|artifacts|bin|obj|build|\.gradle|__pycache__|node_modules|test-results|data)[\\/]' -and $_.Name -ne 'local.properties'}
 Make-Zip (Join-Path $out 'OmniDownloader-source.zip') $root @($files)
-Get-ChildItem -LiteralPath $out -File | Where-Object {$_.Extension -in @('.zip','.apk')} | ForEach-Object { $hash=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); "$hash  $($_.Name)" } | Set-Content -LiteralPath (Join-Path $out 'SHA256SUMS.txt') -Encoding UTF8
+@($zip,(Join-Path $out 'OmniDownloader-browser-extension.zip'),(Join-Path $out 'OmniDownloader-source.zip'),(Join-Path $out 'OmniDownloader-universal-debug.apk')) | Where-Object {Test-Path -LiteralPath $_} | ForEach-Object {Get-Item -LiteralPath $_} | ForEach-Object { $hash=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); "$hash  $($_.Name)" } | Set-Content -LiteralPath (Join-Path $out 'SHA256SUMS.txt') -Encoding UTF8
 Write-Host "Packages ready: $out"
