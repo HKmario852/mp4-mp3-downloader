@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -15,6 +15,14 @@ public static class UiKit
     public static FrameworkElement Icon(string name, double size=22)
     {
         var path=name switch{
+"network"=>"M12,2 A10,10 0 1 1 11.99,2 M2,12 L22,12 M4,6 L20,6 M4,18 L20,18 M12,2 C5,8 5,16 12,22 C19,16 19,8 12,2",
+"notification"=>"M5,17 L19,17 L17,14 L17,8 C17,1 7,1 7,8 L7,14 Z M10,21 L14,21",
+"download"=>"M12,2 L12,16 M6,10 L12,16 L18,10 M3,17 L3,22 L21,22 L21,17",
+"info"=>"M12,2 A10,10 0 1 1 11.99,2 M12,10 L12,18 M12,6 L12.01,6",
+"settings"=>"M12,3 L15,6 L19,6 L19,10 L22,12 L19,15 L19,19 L15,19 L12,22 L9,19 L5,19 L5,15 L2,12 L5,9 L5,5 L9,5 Z M12,8 A4,4 0 1 1 11.99,8",
+"mp4"=>"M3,2 L18,2 L18,22 L3,22 Z M10,5 L22,5 L22,10 L10,10 Z M7,15 A4,4 0 1 1 6.99,15 M9,14 L13,16 L9,18 Z",
+"mp3"=>"M3,2 L18,2 L18,22 L3,22 Z M10,5 L22,5 L22,10 L10,10 Z M8,19 L8,13 L15,11 L15,17 M8,19 C8,21 4,21 4,19 C4,17 8,17 8,19 M15,17 C15,19 11,19 11,17 C11,15 15,15 15,17",
+
             "complete"=>"M12,2 A10,10 0 1 1 11.99,2 M6,12 L10,16 L18,8",
             "video"=>"M3,4 L21,4 L21,20 L3,20 Z M7,4 L7,20 M17,4 L17,20 M3,9 L7,9 M17,9 L21,9 M3,15 L7,15 M17,15 L21,15",
             "audio"=>"M9,18 L9,5 L21,2 L21,15 M9,8 L21,5 M9,18 C9,22 2,22 2,19 C2,16 9,15 9,18 M21,15 C21,19 14,19 14,16 C14,13 21,12 21,15",
@@ -29,7 +37,7 @@ public static class UiKit
             "save"=>"M3,3 L18,3 L22,7 L22,22 L3,22 Z M7,3 L7,10 L17,10 L17,3 M7,22 L7,15 L18,15 L18,22",
             _=>"M4,12 L20,12 M12,4 L12,20"};
         var v=new System.Windows.Shapes.Path{Data=Geometry.Parse(path),StrokeThickness=1.8,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Width=size,Height=size,Stretch=Stretch.Uniform};
-        if(name=="complete")v.Stroke=Brush("#29C978");else v.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty,"Text");return v;
+        if(name is "mp3" or "mp4")v.Stroke=new LinearGradientBrush((Color)ColorConverter.ConvertFromString("#28BADD"),(Color)ColorConverter.ConvertFromString("#D421EA"),45);else if(name=="complete")v.Stroke=Brush("#29C978");else v.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty,"Text");return v;
     }
     public static StackPanel IconLabel(string name,string label){var p=new StackPanel{Orientation=Orientation.Horizontal};p.Children.Add(Icon(name));var t=Text(label);t.Margin=new Thickness(9,0,0,0);p.Children.Add(t);return p;}
     public static Button IconButton(string name,string label,Action action,bool accent=false){var b=Button(label,action,accent);var content=IconLabel(name,label);if(accent&&content.Children[0] is System.Windows.Shapes.Path path)path.Stroke=Brushes.White;b.Content=content;System.Windows.Automation.AutomationProperties.SetName(b,label);return b;}

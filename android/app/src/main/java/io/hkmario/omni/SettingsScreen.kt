@@ -42,7 +42,7 @@ private val fields=listOf(
  fun save(){try{val next=json.decodeFromString<Prefs>(JsonObject(values).toString());next.validate();engine.save(next);message=text(next,"設定已儲存","Settings saved")}catch(e:Exception){message=text(p,"請檢查輸入：","Check input: ")+(e.message?:"")}}
  Column(Modifier.fillMaxSize()){
   Text(text(p,"設定","Settings"),fontSize=25.sp)
-  Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){sections.forEachIndexed{i,s->FilterChip(category==i,{category=i},label={Text(text(p,s.first,s.second))})}}
+  Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){sections.forEachIndexed{i,s->FilterChip(category==i,{category=i},modifier=Modifier.heightIn(min=56.dp),leadingIcon={FeatureIcon(listOf("settings","download","video","network","notification","info")[i])},label={Text(text(p,s.first,s.second),fontSize=18.sp)})}}
   Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
    if(category==0){Text(text(p,"Android 背景下載會顯示通知；返回桌面不會停止下載。系統限制開機自動啟動下載，開機選項會提供繼續提示。","Background downloads keep a notification. Returning home keeps them running. Android restricts automatic downloads at boot; startup provides a reminder."),color=Muted);listOf("mp4Tree" to "影片 / Video","mp3Tree" to "音訊 / Audio").forEach{(key,label)->OutlinedButton(onClick={folderKey=key;tree.launch(null)}){Text("$label · "+if(value(key).isBlank())text(p,"選擇儲存位置","Choose storage")else text(p,"變更儲存位置","Change storage"))}}}
    fields[category].forEachIndexed{i,f->

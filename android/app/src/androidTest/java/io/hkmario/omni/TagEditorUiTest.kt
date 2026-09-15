@@ -17,7 +17,7 @@ class TagEditorUiTest {
   compose.onNodeWithTag("nav-tags").performClick()
   compose.onNodeWithText("搜尋歌曲、演出者、專輯或檔名…").assertExists()
   compose.onNodeWithTag("tag-search").performTextInput("測試歌曲")
-  compose.onNodeWithTag("tag-select-tag-ui-test").performScrollTo().performClick()
+  compose.onNodeWithTag("tag-row-tag-ui-test").performScrollTo().performClick()
   compose.waitUntil(10000){compose.onAllNodes(hasSetTextAction() and hasText("測試歌曲")).fetchSemanticsNodes().isNotEmpty()}
   val title=compose.onNode(hasSetTextAction() and hasText("標題 / Title"));title.performScrollTo().performTextReplacement("invalid/title")
   compose.onNodeWithText("儲存標籤").assertIsNotEnabled()

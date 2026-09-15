@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -68,7 +68,7 @@ public partial class MainWindow : Window
         FailedButton.Content = failures ? "返回下載任務" : $"失敗任務（{engine.Jobs.Count(j => j.State == JobState.Failed && !j.IsGroupRoot)}）";
         if (previewJobId is string selectedId) { var selectedJob = engine.Jobs.FirstOrDefault(j => j.Id == selectedId); MetadataLabel.Text = selectedJob?.MetadataStatus ?? ""; }
         FormatFilter.Visibility = history && !tagsPage ? Visibility.Visible : Visibility.Collapsed;
-        EditTagsButton.Visibility = history || RecentGrid.Items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        EditTagsButton.Visibility = FolderButton.Visibility = Visibility.Collapsed;
         EmptyTitle.Text = tagsPage ? "尚未有符合條件的 MP3" : "將喜歡的影音收藏到這裡";
         var groups = engine.Groups.Where(g => engine.Jobs.Any(j => j.GroupId == g.Id && !j.IsGroupRoot && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j)))).ToArray(); var sig = failures + ":" + string.Join(';', groups.Select(g => g.Id + ":" + g.Title + ":" + string.Join(',', engine.Jobs.Where(j => j.GroupId == g.Id && !j.IsGroupRoot && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).Select(j => j.Id))));
         if (groupSignature != sig)
@@ -141,7 +141,7 @@ public partial class MainWindow : Window
         foreach(var choice in new[]{DownloadMode.Mp4,DownloadMode.Mp3}){var selected=choice;body.Children.Add(UiKit.Button((choice==DownloadMode.Mp3?p.AudioFormat:p.VideoFormat).ToUpperInvariant(),()=>{result.TrySetResult(selected);dialog.Close();},true));}
         body.Children.Add(UiKit.Button(UiKit.T("取消","Cancel"),()=>dialog.Close()));dialog.Content=body;dialog.Closed+=(_,_)=>result.TrySetResult(null);dialog.ShowDialog();return result.Task;
     }
-    void SetMode(DownloadMode value) { mode = value; DirectoryBox.Text = engine.Settings.DirectoryFor(value); DirectoryLabel.Text = (value==DownloadMode.Mp3?engine.Settings.AudioFormat:engine.Settings.VideoFormat).ToUpperInvariant()+UiKit.T(" 儲存位置"," storage"); Mp4Button.Content="▣ "+engine.Settings.VideoFormat.ToUpperInvariant(); Mp3Button.Content="♫ "+engine.Settings.AudioFormat.ToUpperInvariant(); QualityBox.SelectedValue = null; UpdateQualities(); Mp4Button.Background = value == DownloadMode.Mp4 ? (Brush)FindResource("Accent") : (Brush)FindResource("Raised"); Mp3Button.Background = value == DownloadMode.Mp3 ? (Brush)FindResource("Accent") : (Brush)FindResource("Raised"); }
+    void SetMode(DownloadMode value) { mode = value; DirectoryBox.Text = engine.Settings.DirectoryFor(value); DirectoryLabel.Text = (value==DownloadMode.Mp3?engine.Settings.AudioFormat:engine.Settings.VideoFormat).ToUpperInvariant()+UiKit.T(" 儲存位置"," storage"); Mp4Button.Content=UiKit.IconLabel(engine.Settings.VideoFormat=="mp4"?"mp4":"video",engine.Settings.VideoFormat.ToUpperInvariant()); Mp3Button.Content=UiKit.IconLabel(engine.Settings.AudioFormat=="mp3"?"mp3":"audio",engine.Settings.AudioFormat.ToUpperInvariant()); QualityBox.SelectedValue = null; UpdateQualities(); Mp4Button.Background = value == DownloadMode.Mp4 ? (Brush)FindResource("Accent") : (Brush)FindResource("Raised"); Mp3Button.Background = value == DownloadMode.Mp3 ? (Brush)FindResource("Accent") : (Brush)FindResource("Raised"); }
     void Mp4Click(object s, RoutedEventArgs e) => SetMode(DownloadMode.Mp4); void Mp3Click(object s, RoutedEventArgs e) => SetMode(DownloadMode.Mp3);
     void BrowseClick(object s, RoutedEventArgs e) { var dialog = new Microsoft.Win32.OpenFolderDialog(); if (dialog.ShowDialog(this) == true) { var p = engine.Settings; p.SetDirectory(mode, dialog.FolderName); engine.SaveSettings(p); DirectoryBox.Text = p.DirectoryFor(mode); } }
     async void NewClick(object s, RoutedEventArgs e) { if(!await LeaveSettings())return;ShowDownloads(); history = false; failures = false; tagsPage = false; recentSelection = false; Refresh(); UrlBox.Focus(); }
@@ -199,7 +199,7 @@ public partial class MainWindow : Window
         if (SelectedJobs().FirstOrDefault()?.Extension == "mp3") EditTagsClick(s, e);
         else FolderClick(s, e);
     }
-    async void SettingsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;tagEditorView=null;libraryView=null;settingsView=new SettingsView(this,engine,()=>{UiKit.Apply(this,engine.Settings);UpdateNavigation();SetMode(mode);ApplyLanguage();});settingsView.Back=async()=>{if(await LeaveSettings())ShowDownloads();};MainNav.Visibility=Visibility.Collapsed;NavColumn.Width=new GridLength(0);Grid.SetColumn(PageHost,0);Grid.SetColumnSpan(PageHost,3);PageHost.Content=settingsView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
+    async void SettingsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;var previousPage=PageHost.Content;var previousTags=tagEditorView;var previousLibrary=libraryView;tagEditorView=null;libraryView=null;settingsView=new SettingsView(this,engine,()=>{UiKit.Apply(this,engine.Settings);UpdateNavigation();SetMode(mode);ApplyLanguage();});settingsView.Back=async()=>{if(await LeaveSettings()){if(previousPage is null)ShowDownloads();else{RestoreMenu();tagEditorView=previousTags;libraryView=previousLibrary;PageHost.Content=previousPage;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;UiKit.Typography(this,engine.Settings.TextScale);}}};MainNav.Visibility=Visibility.Collapsed;NavColumn.Width=new GridLength(0);Grid.SetColumn(PageHost,0);Grid.SetColumnSpan(PageHost,3);PageHost.Content=settingsView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
     async Task<bool> LeaveSettings(){if(tagEditorView is not null&&!await tagEditorView.CanLeave())return false;if(settingsView is not null&&!await settingsView.CanLeave())return false;settingsView=null;return true;}
     void RestoreMenu(){MainNav.Visibility=Visibility.Visible;Grid.SetColumn(PageHost,1);Grid.SetColumnSpan(PageHost,2);UpdateNavigation();}
     async Task OpenTagSelection(DownloadJob[] jobs){if(await LeaveSettings())ShowTagEditor(jobs);}

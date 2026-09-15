@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -80,7 +80,16 @@ public static class Program
         Capture(window,Path.Combine(output,"settings-full-width.png"));
         var p=engine.Settings;p.TextScale=125;p.UiScale=110;UiKit.Apply(window,p);await Idle();Capture(window,Path.Combine(output,"settings-scaled.png"));
         p.Theme="light";UiKit.Apply(window,p);await Idle();Capture(window,Path.Combine(output,"settings-scaled-light.png"));
-        File.WriteAllText(Path.Combine(output,"checks.json"),Json.Encode(new{passed=true,checks=new[]{"embedded tag editor","invalid title guard","actual tag save","filename preserved","full-width settings","125 percent text and 110 percent UI"}}));
+        var settings=(SettingsView)host.Content;settings.Back!();await Idle();Check(ReferenceEquals(host.Content,editor),"Settings back must restore same tag editor");
+        var all=Descendants(editor).OfType<Button>().Single(b=>b.Content is string x&&x=="全選");all.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));for(int i=0;i<100&&editor.Busy;i++)await Task.Delay(30);await Idle();
+        Check(Descendants(editor).OfType<CheckBox>().Count(c=>c.IsVisible&&c.Content is null)==2,"Multi-select must show song checkboxes");
+        var clear=Descendants(editor).OfType<Button>().Single(b=>b.Content is string x&&x=="取消全選");clear.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));for(int i=0;i<100&&editor.Busy;i++)await Task.Delay(30);await Idle();Check(!Descendants(editor).OfType<CheckBox>().Any(c=>c.IsVisible&&c.Content is null),"Cleared selection must hide song checkboxes");
+        var imports=Enumerable.Range(0,24).Select(i=>Path.Combine(output,$"scroll-{i}.mp3")).ToArray();foreach(var path in imports)File.Copy(original!,path,true);await editor.Import(imports);await Idle();
+        var songPanel=(StackPanel)typeof(TagEditorView).GetField("songList",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!.GetValue(editor)!;var songScroll=(ScrollViewer)songPanel.Parent;Check(songScroll.ScrollableHeight>0,"Song fixture must overflow");
+        var bar=Descendants(songScroll).OfType<System.Windows.Controls.Primitives.ScrollBar>().First(b=>b.Orientation==Orientation.Vertical);var thumb=Descendants(bar).OfType<System.Windows.Controls.Primitives.Thumb>().First();Check(thumb.ActualHeight>0&&thumb.IsHitTestVisible,"Scrollbar thumb must be reachable");thumb.RaiseEvent(new System.Windows.Controls.Primitives.DragStartedEventArgs(0,0));thumb.RaiseEvent(new System.Windows.Controls.Primitives.DragDeltaEventArgs(0,40));thumb.RaiseEvent(new System.Windows.Controls.Primitives.DragCompletedEventArgs(0,40,false));await Idle();Check(songScroll.VerticalOffset>0,"Dragging thumb must scroll songs");
+        window.OpenHistory();await Idle();var equal=Descendants(host).OfType<System.Windows.Controls.Primitives.UniformGrid>().First(g=>g.Columns==4);Check(equal.Children.OfType<FrameworkElement>().Select(c=>Math.Round(c.ActualWidth,1)).Distinct().Count()==1,"Summary cards must be equal width");
+        var libraryTable=Descendants(host).OfType<DataGrid>().Single();libraryTable.SelectedItem=libraryTable.Items[0];await Idle();Check(libraryTable.Columns[0].Visibility==Visibility.Collapsed,"Single selection hides checkbox");libraryTable.SelectedItems.Add(libraryTable.Items[1]);await Idle();Check(libraryTable.Columns[0].Visibility==Visibility.Visible,"Multiple selection shows checkboxes");Check(libraryTable.Items.Cast<LibraryView.LibraryRow>().Count(r=>r.Checked)==2,"Row selection must select files for actions");Capture(window,Path.Combine(output,"library-equal-width.png"));
+        File.WriteAllText(Path.Combine(output,"checks.json"),Json.Encode(new{passed=true,checks=new[]{"embedded tag editor","invalid title guard","actual tag save","filename preserved","full-width settings","125 percent text and 110 percent UI","settings returns to original editor","select all and clear","conditional checkboxes","equal-width summary","song scrollbar drag","library row selection"}}));
     }
     static async Task CheckV2(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output) {
         void Check(bool ok,string error){if(!ok)throw new Exception(error);}

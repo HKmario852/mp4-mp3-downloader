@@ -15,6 +15,15 @@ import androidx.compose.ui.unit.dp
 @Composable fun FeatureIcon(name:String,modifier:Modifier=Modifier.size(23.dp)) {
  val ink=if(name=="complete")Color(0xFF29C978) else LocalContentColor.current
  val data=when(name){
+"network"->"M12,2 A10,10 0 1 1 11.99,2 M2,12 L22,12 M4,6 L20,6 M4,18 L20,18 M12,2 C5,8 5,16 12,22 C19,16 19,8 12,2"
+"notification"->"M5,17 L19,17 L17,14 L17,8 C17,1 7,1 7,8 L7,14 Z M10,21 L14,21"
+"download"->"M12,2 L12,16 M6,10 L12,16 L18,10 M3,17 L3,22 L21,22 L21,17"
+"info"->"M12,2 A10,10 0 1 1 11.99,2 M12,10 L12,18 M12,6 L12.01,6"
+"settings"->"M12,3 L15,6 L19,6 L19,10 L22,12 L19,15 L19,19 L15,19 L12,22 L9,19 L5,19 L5,15 L2,12 L5,9 L5,5 L9,5 Z M12,8 A4,4 0 1 1 11.99,8"
+"mp4"->"M3,2 L18,2 L18,22 L3,22 Z M10,5 L22,5 L22,10 L10,10 Z M7,15 A4,4 0 1 1 6.99,15 M9,14 L13,16 L9,18 Z"
+"mp3"->"M3,2 L18,2 L18,22 L3,22 Z M10,5 L22,5 L22,10 L10,10 Z M8,19 L8,13 L15,11 L15,17 M8,19 C8,21 4,21 4,19 C4,17 8,17 8,19 M15,17 C15,19 11,19 11,17 C11,15 15,15 15,17"
+
+
   "complete"->"M12,2 A10,10 0 1 1 11.99,2 M6,12 L10,16 L18,8"
   "video"->"M3,4 L21,4 L21,20 L3,20 Z M7,4 L7,20 M17,4 L17,20 M3,9 L7,9 M17,9 L21,9"
   "audio"->"M9,18 L9,5 L21,2 L21,15 M9,8 L21,5 M9,18 C9,22 2,22 2,19 C2,16 9,15 9,18 M21,15 C21,19 14,19 14,16 C14,13 21,12 21,15"
@@ -24,7 +33,7 @@ import androidx.compose.ui.unit.dp
   "search"->"M10,2 A8,8 0 1 1 9.99,2 M16,16 L23,23"
   else->"M12,3 L12,21 M3,12 L21,12"
  }
- Canvas(modifier){scale(size.width/24f,size.height/24f,androidx.compose.ui.geometry.Offset.Zero){drawPath(PathParser().parsePathString(data).toPath(),ink,style=Stroke(1.8f,cap=StrokeCap.Round))}}
+ Canvas(modifier){scale(size.width/24f,size.height/24f,androidx.compose.ui.geometry.Offset.Zero){if(name=="mp3"||name=="mp4")drawPath(PathParser().parsePathString(data).toPath(),Brush.linearGradient(listOf(Color(0xFF28BADD),Color(0xFFD421EA))),style=Stroke(1.8f,cap=StrokeCap.Round))else drawPath(PathParser().parsePathString(data).toPath(),ink,style=Stroke(1.8f,cap=StrokeCap.Round))}}
 }
 @Composable fun AppCheckbox(checked:Boolean,onCheckedChange:((Boolean)->Unit)?,modifier:Modifier=Modifier,enabled:Boolean=true){
  val outline=MaterialTheme.colorScheme.onSurfaceVariant;val background=MaterialTheme.colorScheme.surface
