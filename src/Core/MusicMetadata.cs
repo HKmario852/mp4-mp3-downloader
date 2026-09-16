@@ -7,7 +7,7 @@ public enum MusicLookupState { Matched, MatchedNoCover, NoMatch, Ambiguous, Unav
 public sealed record MusicLookup(MusicLookupState State, string? Title = null, string? Artist = null, string? Album = null, Cover? Cover = null)
 {
     public string Message => State switch {
-        MusicLookupState.Matched => "MusicBrainz：已配對，專輯封面作為備用封面",
+        MusicLookupState.Matched => "MusicBrainz：已配對，已取得專輯封面",
         MusicLookupState.MatchedNoCover => "MusicBrainz：已配對標籤，未取得專輯封面",
         MusicLookupState.Ambiguous => "MusicBrainz：有多個可能結果，已保留來源資料",
         MusicLookupState.Unavailable => "MusicBrainz：服務暫時無法使用，已保留來源資料",
@@ -89,7 +89,7 @@ public sealed class MusicMetadata
                     foreach (var image in Array(images.RootElement,"images")) {
                         if (!image.TryGetProperty("front",out var front) || front.ValueKind != JsonValueKind.True || !image.TryGetProperty("approved",out var approved) || approved.ValueKind != JsonValueKind.True) continue;
                         var cover = await FetchWith(client,Text(image,"image"),"Album front",3,token);
-                        if (cover is not null) return new(MusicLookupState.Matched,matchTitle,matchArtist,Text(release,"title"),cover);
+                        if (cover is not null && AlbumArtwork.Accept(cover.Bytes)) return new(MusicLookupState.Matched,matchTitle,matchArtist,Text(release,"title"),cover);
                     }
                 } catch (Exception e) when (e is HttpRequestException or IOException or JsonException) { }
             }

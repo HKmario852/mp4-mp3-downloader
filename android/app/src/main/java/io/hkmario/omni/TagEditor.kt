@@ -10,7 +10,7 @@ import java.io.IOException
 
 class TagEditor(private val engine:Engine) {
     companion object {private val lock=Mutex()}
-    suspend fun apply(ids:Set<String>,delta:Map<String,String>,raw:Map<String,ByteArray>,cover:ByteArray?,removeCover:Boolean=false,renameFile:Boolean=true)=lock.withLock { withContext(Dispatchers.IO) {
+    suspend fun apply(ids:Set<String>,delta:Map<String,String>,raw:Map<String,ByteArray>,cover:ByteArray?,removeCover:Boolean=false,renameFile:Boolean=true,automaticCover:Boolean=false)=lock.withLock { withContext(Dispatchers.IO) {
         delta["TIT2"]?.let{require(Rules.titleError(it)==null){Rules.titleError(it)!!}};require(raw.keys.none{it.substringBefore('#')=="TIT2"}){"請用 Title 欄位修改歌曲名"}
         if(renameFile&&!delta["TIT2"].isNullOrEmpty())ids.forEach{val t=engine.get(it);require(t.path?.startsWith("content://")!=true||t.directory.startsWith("content://")){"請先加入歌曲所在資料夾，取得重新命名授權"}}
         val directories=linkedMapOf<String,String>()
@@ -20,7 +20,7 @@ class TagEditor(private val engine:Engine) {
             val source=if(content){(engine.context.contentResolver.openInputStream(Uri.parse(path))?:throw IOException("檔案權限已失效")).use{i->staged.outputStream().use{i.copyTo(it)}};staged}else File(path)
             val temp=File(source.parentFile,".${source.name}.edit-${java.util.UUID.randomUUID()}");val backup=File(source.parentFile,".${source.name}.backup-${java.util.UUID.randomUUID()}")
             val tag=Id3.read(source);delta.forEach{(k,v)->tag.setText(if(k=="TYER"&&tag.version==4)"TDRC"else k,v)};raw.forEach{(k,v)->tag.setRaw(k,v)}
-            if(removeCover)tag.covers(emptyList());if(cover!=null)tag.covers(listOf(Art(cover,if(cover[0]==0xff.toByte())"image/jpeg"else"image/png","User cover",3)))
+            if(removeCover)tag.covers(emptyList());if(cover!=null)tag.covers(listOf(Art(cover,if(cover[0]==0xff.toByte())"image/jpeg"else"image/png",if(automaticCover)"Album front"else"User cover",3)))
             var destination=path
             try {
                 tag.write(source,temp)
@@ -40,7 +40,7 @@ class TagEditor(private val engine:Engine) {
                     java.nio.file.Files.move(temp.toPath(),source.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                     try{if(destination!=path)java.nio.file.Files.move(source.toPath(),File(destination).toPath())}catch(e:Exception){backup.copyTo(source,true);throw e}
                 }
-                engine.update(id){it.copy(path=destination,title=if(delta.containsKey("TIT2"))delta.getValue("TIT2")else it.title,artist=if(delta.containsKey("TPE1"))delta.getValue("TPE1")else it.artist,album=if(delta.containsKey("TALB"))delta.getValue("TALB")else it.album,isUserEdited=true)}
+                engine.update(id){it.copy(path=destination,title=if(delta.containsKey("TIT2"))delta.getValue("TIT2")else it.title,artist=if(delta.containsKey("TPE1"))delta.getValue("TPE1")else it.artist,album=if(delta.containsKey("TALB"))delta.getValue("TALB")else it.album,isUserEdited=it.isUserEdited||!automaticCover,coverUserEdited=it.coverUserEdited||(!automaticCover&&(cover!=null||removeCover||raw.keys.any{k->k.substringBefore('#')=="APIC"})))}
                 if(cover!=null)directories[if(content)task.directory else File(destination).parent!!]=destination
                 backup.delete();engine.storage.scan(File(destination))
             } finally{temp.delete();if(content)staged.delete()}

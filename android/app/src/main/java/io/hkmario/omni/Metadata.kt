@@ -59,6 +59,7 @@ object Metadata {
                     val coverJson=withContext(Dispatchers.IO){client.newCall(request("https://coverartarchive.org/release/$id")).execute().use{r->if(r.isSuccessful)JSONObject(r.body!!.string())else null}}?:continue
                     for(front in array(coverJson,"images").filter{it.optBoolean("front")&&it.optBoolean("approved")}){
                         val art=fetch(front.getString("image"),"Album front",3)?:continue
+                        if(!AlbumArtwork.accept(art.bytes))continue
                         return@withPermit MusicResult("MusicBrainz：已配對並嵌入專輯封面",matchedTitle,matchedArtist,release.optString("title"),art)
                     }
                 }catch(e:kotlinx.coroutines.CancellationException){throw e}catch(_:Exception){}

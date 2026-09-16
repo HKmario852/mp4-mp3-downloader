@@ -61,6 +61,7 @@ public sealed class DownloadJob
     public string? Error { get; set; }
     public string? Stderr { get; set; }
     public bool IsUserEdited { get; set; }
+    public bool CoverUserEdited { get; set; }
     public string MetadataStatus { get; set; } = "";
     public DateTimeOffset? MetadataCheckedAt { get; set; }
     public bool HadCredentials { get; set; }
@@ -82,7 +83,7 @@ public sealed class DownloadGroup
     public bool Notified { get; set; }
     public int DiscoveryFailures { get; set; }
 }
-public sealed record MediaInfo(string Title, string Artist, string Album, string? Thumbnail, double? Duration, MediaFormat[]? Formats = null);
+public sealed record MediaInfo(string Title, string Artist, string Album, string? Thumbnail, double? Duration, MediaFormat[]? Formats = null, string[]? ArtworkCandidates = null);
 public sealed record MediaFormat(string Extension, int? Height, bool Video, bool Audio, long? FileSize, double? Bitrate, string? Id = null, string? Codec = null, bool Approximate = false);
 public static class Json
 {

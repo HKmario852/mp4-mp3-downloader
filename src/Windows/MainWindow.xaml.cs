@@ -50,7 +50,7 @@ public partial class MainWindow : Window
         if(tagEditorView is not null)return;
         if(libraryView is not null){libraryView.Refresh();return;}if(settingsView is not null)return;
         var selected = JobGrid.SelectedItems.Cast<DownloadJob>().Select(x => x.Id).ToHashSet();
-        var items = history ? store.Load(true).Where(j => j.State == JobState.Completed && !j.IsGroupRoot && MatchesLibrary(j)).OrderByDescending(j => j.CompletedAt).ToArray() : engine.Jobs.Where(j => !j.IsGroupRoot && j.GroupId is null && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).OrderByDescending(j => j.CreatedAt).ToArray();
+        var items = history ? store.Load(true).Where(j => j.State == JobState.Completed && !j.IsGroupRoot && MatchesLibrary(j)).OrderByDescending(j => j.CompletedAt).ToArray() : engine.Jobs.Where(j => !j.IsGroupRoot && j.GroupId is null && HistorySearch.Matches(j,SearchBox.Text) && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).OrderByDescending(j => j.CreatedAt).ToArray();
         refreshing = true;
         try {
             JobGrid.ItemsSource = items; foreach (var j in items.Where(j => selected.Contains(j.Id))) JobGrid.SelectedItems.Add(j);
@@ -60,7 +60,7 @@ public partial class MainWindow : Window
         }
         finally { refreshing = false; }
         EmptyPanel.Visibility = items.Length == 0 ? Visibility.Visible : Visibility.Collapsed; CountLabel.Text = $"({items.Length})"; PageTitle.Text = tagsPage ? "標籤編輯 · MP3" : history ? "已下載" : failures ? "下載失敗" : "下載任務";
-        SearchBox.Visibility = ClearButton.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
+        SearchBox.Visibility=Visibility.Visible;ClearButton.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
         ClearButton.IsEnabled = history && items.Length > 0;
         DeleteFileButton.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
         DeleteFileButton.IsEnabled = history && SelectedJobs().Length == 1 && SelectedJobs()[0].State == JobState.Completed;
@@ -70,13 +70,13 @@ public partial class MainWindow : Window
         FormatFilter.Visibility = history && !tagsPage ? Visibility.Visible : Visibility.Collapsed;
         EditTagsButton.Visibility = FolderButton.Visibility = Visibility.Collapsed;
         EmptyTitle.Text = tagsPage ? "尚未有符合條件的 MP3" : "將喜歡的影音收藏到這裡";
-        var groups = engine.Groups.Where(g => engine.Jobs.Any(j => j.GroupId == g.Id && !j.IsGroupRoot && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j)))).ToArray(); var sig = failures + ":" + string.Join(';', groups.Select(g => g.Id + ":" + g.Title + ":" + string.Join(',', engine.Jobs.Where(j => j.GroupId == g.Id && !j.IsGroupRoot && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).Select(j => j.Id))));
+        var groups = engine.Groups.Where(g => engine.Jobs.Any(j => j.GroupId == g.Id && !j.IsGroupRoot && HistorySearch.Matches(j,SearchBox.Text) && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j)))).ToArray(); var sig = failures + ":" + string.Join(';', groups.Select(g => g.Id + ":" + g.Title + ":" + string.Join(',', engine.Jobs.Where(j => j.GroupId == g.Id && !j.IsGroupRoot && HistorySearch.Matches(j,SearchBox.Text) && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).Select(j => j.Id))));
         if (groupSignature != sig)
         {
             groupSignature = sig; GroupCards.Children.Clear();
             foreach (var g in groups)
             {
-                var children = engine.Jobs.Where(j => j.GroupId == g.Id && !j.IsGroupRoot && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).ToArray(); var exp = new Expander { Header = $"清單 · {g.Title} ({children.Length})", Foreground = Foreground, Margin = new Thickness(3, 6, 3, 6) };
+                var children = engine.Jobs.Where(j => j.GroupId == g.Id && !j.IsGroupRoot && HistorySearch.Matches(j,SearchBox.Text) && (failures ? j.State == JobState.Failed : LibraryActions.InQueue(j))).ToArray(); var exp = new Expander { Header = $"清單 · {g.Title} ({children.Length})", Foreground = Foreground, Margin = new Thickness(3, 6, 3, 6) };
                 var panel = new StackPanel(); var cancel = new Button { Content = "移除清單未完成任務" }; cancel.Click += async (_, _) => await engine.Cancel(engine.Jobs.Where(j => j.GroupId == g.Id).Select(j => j.Id)); panel.Children.Add(cancel);
                 var list = new ListBox { MaxHeight = 150, ItemsSource = children, Background = Background, Foreground = Foreground }; var template = new DataTemplate(); var stack = new FrameworkElementFactory(typeof(StackPanel)); var name = new FrameworkElementFactory(typeof(TextBlock)); name.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Title")); stack.AppendChild(name); var state = new FrameworkElementFactory(typeof(TextBlock)); state.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("StatusText")); state.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(106, 149, 255))); stack.AppendChild(state); template.VisualTree = stack; list.ItemTemplate = template; VirtualizingPanel.SetIsVirtualizing(list, true); VirtualizingPanel.SetVirtualizationMode(list, VirtualizationMode.Recycling); ScrollViewer.SetCanContentScroll(list, true); panel.Children.Add(list); exp.Content = panel; GroupCards.Children.Add(exp);
             }
@@ -218,7 +218,7 @@ public partial class MainWindow : Window
         var buttons = new[] { NewNav, QueueNav, HistoryNav, TagsNav, SettingsNav, CollapseNav };
         var labels = UiKit.Language=="en"?new[]{"New download","Downloading","Downloaded","Tag editor","Settings","Collapse sidebar"}:new[]{"新增下載","下載中","已下載","標籤編輯","設定","收合側欄"};
         var paths = new[] { "M12,3 L12,21 M3,12 L21,12", "M12,2 L12,17 M5,10 L12,17 L19,10 M3,18 L3,22 L21,22 L21,18", "M3,12 L9,18 L21,5", "M9,18 L9,5 L21,2 L21,15 M9,8 L21,5 M9,18 C9,22 2,22 2,19 C2,16 9,15 9,18 M21,15 C21,19 14,19 14,16 C14,13 21,12 21,15", "M3,5 L21,5 M3,12 L21,12 M3,19 L21,19 M8,2 L8,8 M16,9 L16,15 M10,16 L10,22", "M3,5 L21,5 M3,12 L21,12 M3,19 L21,19" };
-        for (int i = 0; i < buttons.Length; i++) { var panel = new StackPanel { Orientation = Orientation.Horizontal }; var icon=new System.Windows.Shapes.Path { Data = Geometry.Parse(paths[i]), Stroke = Foreground, StrokeThickness = 1.8, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Width = 22, Height = 22, Stretch = Stretch.Uniform };icon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty,"Text");panel.Children.Add(icon); if (!collapsed && i < 5) panel.Children.Add(new TextBlock { Text = labels[i], Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }); buttons[i].Content = panel; buttons[i].Padding = new Thickness(collapsed ? 0 : 8, 10, collapsed ? 0 : 8, 10); System.Windows.Automation.AutomationProperties.SetName(buttons[i], labels[i]); }
+        for (int i = 0; i < buttons.Length; i++) { var panel = new StackPanel { Orientation = Orientation.Horizontal }; var icon=new System.Windows.Shapes.Path { Data = Geometry.Parse(paths[i]), Stroke = Foreground, StrokeThickness = 1.8, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Width = 22, Height = 22, Stretch = Stretch.Uniform };icon.Stroke=UiKit.Brush(new[]{"#6EABF2","#39B9DD","#29C978","#AB8AFF","#E9B65C","#6EABF2"}[i]);panel.Children.Add(icon); if (!collapsed && i < 5) panel.Children.Add(new TextBlock { Text = labels[i], Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center }); buttons[i].Content = panel; buttons[i].Padding = new Thickness(collapsed ? 0 : 8, 10, collapsed ? 0 : 8, 10); System.Windows.Automation.AutomationProperties.SetName(buttons[i], labels[i]); }
     }
 }
 public static class NativeFocus

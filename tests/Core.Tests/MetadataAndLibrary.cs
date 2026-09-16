@@ -20,7 +20,7 @@ public sealed class MetadataAndLibrary
             if(uri.Contains("musicbrainz.org"))return Body(Recording);
             if(uri.Contains("11111111"))return new(HttpStatusCode.NotFound);
             if(uri.Contains("22222222"))return Body("""{"images":[{"front":true,"approved":true,"image":"https://example.org/front.png"}]}""");
-            return new(HttpStatusCode.OK){Content=new ByteArrayContent([137,80,78,71,13,10,26,10,0])};
+            return new(HttpStatusCode.OK){Content=new ByteArrayContent(AlbumArtworkTests.Png(500,500))};
         }));
         var result=await new MusicMetadata(client).Lookup("夜に駆ける","",240,CancellationToken.None);
         Assert.Equal(MusicLookupState.Matched,result.State);Assert.Equal("THE BOOK",result.Album);Assert.Equal("YOASOBI",result.Artist);Assert.NotNull(result.Cover);

@@ -100,7 +100,7 @@ public sealed record TagDelta(Dictionary<string, string> Text, Dictionary<string
 public sealed class TagEditor(Store store)
 {
     static readonly SemaphoreSlim serial = new(1);
-    public async Task Apply(IReadOnlyList<DownloadJob> jobs, TagDelta delta, bool persist = true)
+    public async Task Apply(IReadOnlyList<DownloadJob> jobs, TagDelta delta, bool persist = true, bool automaticCover = false)
     {
         if (delta.Text.TryGetValue("TIT2", out var title) && Validation.TitleError(title) is { } error) throw new ArgumentException(error);
         if (delta.RawBase64?.Keys.Any(k => k.Split('#')[0] == "TIT2") == true) throw new ArgumentException("請在 Title 欄位修改歌曲名");
@@ -122,8 +122,8 @@ public sealed class TagEditor(Store store)
                     try { if (destination != source) File.Move(source, destination); }
                     catch { File.Replace(backup, source, null); throw; }
                     var old = Json.Encode(j);
-                    try { j.FilePath = destination; if (delta.Text.ContainsKey("TIT2")) j.Title = doc.Text("TIT2"); if (delta.Text.ContainsKey("TPE1")) j.Artist = doc.Text("TPE1"); if (delta.Text.ContainsKey("TALB")) j.Album = doc.Text("TALB"); j.IsUserEdited = true; if(persist) store.Save(j); }
-                    catch { if (destination != source) File.Move(destination, source); File.Replace(backup, source, null); var previous = Json.Decode<DownloadJob>(old); j.FilePath = previous.FilePath; j.Title = previous.Title; j.Artist = previous.Artist; j.Album = previous.Album; j.IsUserEdited = previous.IsUserEdited; throw; }
+                    try { j.FilePath = destination; if (delta.Text.ContainsKey("TIT2")) j.Title = doc.Text("TIT2"); if (delta.Text.ContainsKey("TPE1")) j.Artist = doc.Text("TPE1"); if (delta.Text.ContainsKey("TALB")) j.Album = doc.Text("TALB"); if(!automaticCover)j.IsUserEdited = true; if(!automaticCover&&(delta.Covers is not null||delta.RawBase64?.Keys.Any(k=>k.Split('#')[0]=="APIC")==true))j.CoverUserEdited=true; if(persist) store.Save(j); }
+                    catch { if (destination != source) File.Move(destination, source); File.Replace(backup, source, null); var previous = Json.Decode<DownloadJob>(old); j.FilePath = previous.FilePath; j.Title = previous.Title; j.Artist = previous.Artist; j.Album = previous.Album; j.IsUserEdited = previous.IsUserEdited;j.CoverUserEdited=previous.CoverUserEdited; throw; }
                     File.Delete(backup);
                 }
                 finally { if (File.Exists(temp)) File.Delete(temp); }

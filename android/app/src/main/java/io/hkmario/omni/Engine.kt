@@ -54,6 +54,11 @@ class Engine(val context: Context) {
         groups.value.filter{it.discoveryComplete&&!it.notified}.forEach { g ->val children=tasks.value.filter{it.groupId==g.id&&!it.groupRoot};if(children.all{it.state in listOf(State.Completed,State.Failed,State.Cancelled)}){val failures=children.count{it.state==State.Failed}+g.discoveryFailures;saveGroup(g.copy(notified=true));if(prefs.value.notifyAll)Notices.show(context,"播放清單完成：${g.title}"+if(failures>0)"（含 $failures 個失敗項目）" else "") } }
     }
     private fun saveGroup(g: PlaylistGroup) { synchronized(this){groups.value=groups.value.map{if(it.id==g.id)g else it};db.save(g)} }
+    suspend fun findSourceArtwork(url:String,info:JSONObject):Art? {
+        AlbumArtwork.source(info)?.let{return it};val uri=android.net.Uri.parse(url);if(uri.host !in listOf("youtube.com","www.youtube.com","m.youtube.com","youtu.be"))return null
+        val id=if(uri.host=="youtu.be")uri.lastPathSegment else uri.getQueryParameter("v");if(id==null||!id.matches(Regex("[A-Za-z0-9_-]{11}")))return null
+        return try{withTimeout(25000){AlbumArtwork.source(analyze("https://music.youtube.com/watch?v=$id"))}}catch(e:TimeoutCancellationException){null}catch(e:CancellationException){throw e}catch(_:Exception){null}
+    }
     suspend fun analyze(url: String,processId: String="analysis-${java.util.UUID.randomUUID()}"): JSONObject { require(Rules.validUrl(url)){"請輸入有效 HTTPS 影片網址"};ready.await();val request=YoutubeDLRequest(url);request.addOption("--ignore-config");Options.apply(request,networkOptions());val jar=applyCookies(request,url,processId);request.addOption("--no-playlist");request.addOption("--dump-single-json");request.addOption("--skip-download");return try{runInterruptible(Dispatchers.IO){JSONObject(YoutubeDL.getInstance().execute(request,processId).out)}}finally{jar?.delete()} }
     private suspend fun run(id: String) {
         val work=workFor(get(id)).apply{mkdirs()};update(id){it.copy(workPath=work.absolutePath)}
@@ -74,8 +79,12 @@ class Engine(val context: Context) {
                 val tag=Id3.read(file);val arts=mutableListOf<Art>()
                 if(prefs.value.musicBrainz){update(id){it.copy(metadataStatus="MusicBrainz：正在查詢歌曲及專輯封面…")};val result=Metadata.lookup(task.title,task.artist,info.optDouble("duration").takeIf{it.isFinite()&&it>0});update(id){it.copy(metadataStatus=result.status,title=if(it.isUserEdited)it.title else result.title?:it.title,artist=if(it.isUserEdited)it.artist else result.artist?:it.artist,album=if(it.isUserEdited)it.album else result.album?:it.album)};result.cover?.let(arts::add)}else update(id){it.copy(metadataStatus="MusicBrainz：已在設定關閉")}
                 task=get(id);if(prefs.value.keepMetadata){tag.setText("TIT2",task.title);tag.setText("TPE1",task.artist);tag.setText("TALB",task.album)}
-                task.thumbnail?.let{url->try{Metadata.fetch(url,"Video thumbnail",3)?.let{thumb->for(i in arts.indices)arts[i]=arts[i].copy(type=0);arts.add(0,thumb)}}catch(e: CancellationException){throw e}catch(_:Exception){}}
-                if(arts.isNotEmpty()){if(prefs.value.embedThumbnail)tag.covers(arts);cover=arts.first()};val temp=File(work,"tagged.mp3");tag.write(file,temp);java.nio.file.Files.move(temp.toPath(),file.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                arts.removeAll{!AlbumArtwork.accept(it.bytes)}
+                findSourceArtwork(task.url,info)?.let{source->for(i in arts.indices)arts[i]=arts[i].copy(type=0);arts.add(0,source)}
+                if(arts.isEmpty()&&!prefs.value.musicBrainz)Metadata.lookup(task.title,task.artist,task.duration).cover?.let(arts::add)
+                if(prefs.value.embedThumbnail)tag.covers(arts);cover=arts.firstOrNull()
+                update(id){it.copy(metadataStatus=it.metadataStatus+if(cover!=null)" · 已取得近正方形專輯封面"else" · 未找到專輯封面")}
+                val temp=File(work,"tagged.mp3");tag.write(file,temp);java.nio.file.Files.move(temp.toPath(),file.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             }
             val group=groups.value.firstOrNull{it.id==task.groupId}
             val finalBytes=file.length();val published=storage.publish(file,task.targetTree ?: prefs.value.treeFor(task.mode),Options.fileStem(task,prefs.value)+".${task.extension}",group?.let{Rules.safeName(it.title)},prefs.value.duplicateAction,{name->askDuplicate(name)}){askSpace(id)}

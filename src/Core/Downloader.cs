@@ -123,8 +123,13 @@ public sealed partial class Downloader : IAsyncDisposable
                     store.Save(j);
                 } else j.MetadataStatus = "MusicBrainz：已在設定關閉";
                 if(options.KeepMetadata){doc.SetText("TIT2", j.Title); doc.SetText("TPE1", j.Artist); doc.SetText("TALB", j.Album);}
-                if (info.Thumbnail is not null) { try { var thumb = await MusicMetadata.Fetch(info.Thumbnail, "Video thumbnail", 3, ct); covers = CoverOrder.ThumbnailFirst(covers,thumb); } catch (Exception e) when ((e is HttpRequestException or IOException or OperationCanceledException) && !ct.IsCancellationRequested) { } }
-                if (covers.Count > 0 && options.EmbedThumbnail) doc.SetCovers(covers);
+                covers=covers.Where(c=>AlbumArtwork.Accept(c.Bytes)).ToList();
+                var sourceArt=await FindSourceArtwork(j.Url,info,auth,ct);
+                if(sourceArt is null&&covers.Count==0&&!Settings.MusicBrainz){var fallback=await music.Lookup(j.Title,j.Artist,j.Duration,ct);if(fallback.Cover is not null)covers.Add(fallback.Cover);j.MetadataStatus=fallback.Message;}
+                covers=CoverOrder.ThumbnailFirst(covers,sourceArt);
+                if(options.EmbedThumbnail)doc.SetCovers(covers);
+                j.MetadataStatus += covers.Count>0?" · 已取得近正方形專輯封面":" · 未找到專輯封面";store.Save(j);
+
                 var tagged = file + ".tagged"; if (File.Exists(tagged)) File.Delete(tagged); await doc.Write(file, tagged, ct); File.Move(tagged, file, true);
                 System.IO.Directory.CreateDirectory(j.Directory);
                 if (options.KeepThumbnail && covers.Count > 0 && WriteExternalCover is not null) await WriteExternalCover(covers[0].Bytes, Path.Combine(j.Directory, "cover.jpg"));
@@ -144,6 +149,14 @@ public sealed partial class Downloader : IAsyncDisposable
             j.Retry=attempt+1;j.State=JobState.RetryWait;j.Speed=0;j.Eta=0;var seconds=Math.Min(3600,p.RetrySeconds*Math.Pow(2,attempt));j.RetryAt=DateTimeOffset.UtcNow.AddSeconds(seconds);store.Save(j);await Task.Delay(TimeSpan.FromSeconds(seconds),ct);
         }
     }
+    public async Task<Cover?> FindSourceArtwork(string url,MediaInfo info,List<string>? auth=null,CancellationToken ct=default){
+        var art=await AlbumArtwork.Source(info,ct);if(art is not null)return art;
+        if(!Uri.TryCreate(url,UriKind.Absolute,out var uri)||uri.Host is not ("youtube.com" or "www.youtube.com" or "m.youtube.com" or "youtu.be"))return null;
+        var id=uri.Host=="youtu.be"?uri.AbsolutePath.Trim('/'):Validation.Query(uri).GetValueOrDefault("v");
+        if(id is null||!System.Text.RegularExpressions.Regex.IsMatch(id,@"^[A-Za-z0-9_-]{11}$"))return null;
+        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(25));
+        try{return await AlbumArtwork.Source(await Analyze("https://music.youtube.com/watch?v="+id,auth,timeout.Token),timeout.Token);}catch(Exception e)when(e is DownloadException or HttpRequestException or IOException or OperationCanceledException && !ct.IsCancellationRequested){return null;}
+    }
     public async Task<MediaInfo> Analyze(string url, List<string>? auth = null, CancellationToken ct = default)
     {
         Validation.WebUrl(url); var text = await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), new[] { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--dump-single-json", "--skip-download", "--no-warnings" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(auth ?? []).Concat(["--", url]), null, ct);
@@ -152,7 +165,7 @@ public sealed partial class Downloader : IAsyncDisposable
         static double? Number(JsonElement element, string key) => element.TryGetProperty(key, out var n) && n.ValueKind == JsonValueKind.Number && n.TryGetDouble(out var value) ? value : null;
         static string Text(JsonElement element, string key) => element.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : "";
         var formats = root.TryGetProperty("formats", out var fs) && fs.ValueKind == JsonValueKind.Array ? fs.EnumerateArray().Select(f => new MediaFormat(Text(f, "ext"), Number(f, "height") is double h ? (int)h : null, Text(f, "vcodec") is not ("" or "none"), Text(f, "acodec") is not ("" or "none"), (Number(f, "filesize") ?? Number(f, "filesize_approx")) is double b ? (long)b : null, Number(f, "tbr"), Text(f, "format_id"), Text(f, "vcodec"), Number(f, "filesize") is null)).ToArray() : [];
-        return new(Get("track") is { Length: > 0 } track ? track : Get("title"), Get("artist"), Get("album"), Get("thumbnail") is { Length: > 0 } t ? t : null, Number(root, "duration"), formats);
+        return new(Get("track") is { Length: > 0 } track ? track : Get("title"), Get("artist"), Get("album"), Get("thumbnail") is { Length: > 0 } t ? t : null, Number(root, "duration"), formats, AlbumArtwork.Candidates(root));
     }
     async Task Discover(DownloadJob parent, List<string> auth, CancellationToken ct)
     {
