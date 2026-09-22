@@ -14,6 +14,8 @@ public sealed partial class Preferences
     public int AudioKbps { get; set; } = 320;
     public bool CleanTitle { get; set; } = true;
     public bool MusicBrainz { get; set; }
+    // Windows MP3 metadata: finish the file first, or wait for lookup before completion.
+    public string Mp3MetadataMode { get; set; } = "after";
     public string AcoustIdClientKey { get; set; } = "";
     public bool WifiOnly { get; set; } = true;
     public string DownloadDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Omni");
@@ -64,6 +66,10 @@ public sealed class DownloadJob
     public bool IsUserEdited { get; set; }
     public bool CoverUserEdited { get; set; }
     public string MetadataStatus { get; set; } = "";
+    public bool PendingMetadata { get; set; }
+    public double? AnalysisSeconds { get; set; }
+    public double? TransferSeconds { get; set; }
+    public double? ProcessingSeconds { get; set; }
     public DateTimeOffset? MetadataCheckedAt { get; set; }
     public bool HadCredentials { get; set; }
     public bool IsGroupRoot { get; set; }

@@ -1,4 +1,4 @@
-最新版本：[0.2.5](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.5) · [更新內容](docs/RELEASE-0.2.5.md)
+最新版本：[0.2.6](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.6) · [更新內容](docs/RELEASE-0.2.6.md)
 
 最新版本：[0.2.2](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.2) · [更新內容](docs/RELEASE-0.2.2.md)
 

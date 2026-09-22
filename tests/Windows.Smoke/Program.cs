@@ -52,6 +52,8 @@ public static class Program
                 }
                 if(args.Contains("--live-scan")){var result=await new MusicMetadata().Scan(args[3],Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),AcoustIdClient.Resolve(""),null,CancellationToken.None,true);File.WriteAllText(Path.Combine(output,"live-scan.json"),Json.Encode(new{result.State,result.Choices}));await engine.DisposeAsync();window.Close();app.Shutdown(result.Choices?.Length>0?0:3);return;}
                 if(args.Contains("--review-regression")){await CheckReview(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
+                if(args.Contains("--v26-regression")){await CheckV26(window,engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
+                if(args.Contains("--cache-regression")){await CheckCache(engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v24-regression")){await CheckV21(window,engine,store,app,output);await CheckV24(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if (args.Contains("--v21-regression")) { await CheckV21(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--v2-regression")) { await CheckV2(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
@@ -72,6 +74,37 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckV26(MainWindow window,Downloader engine,string output)
+    {
+        ((Button)window.FindName("SettingsNav")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);var host=(ContentControl)window.FindName("PageHost");var settings=(SettingsView)host.Content;
+        settings.StartupWriter=_=>{};
+        var nav=(StackPanel)typeof(SettingsView).GetField("nav",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!.GetValue(settings)!;
+        nav.Children.OfType<Button>().ElementAt(2).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        window.UpdateLayout();
+        var form=(StackPanel)typeof(SettingsView).GetField("form",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!.GetValue(settings)!;
+        var logicalCombos=form.Children.OfType<Border>().Select(c=>c.Child).OfType<Grid>().SelectMany(g=>g.Children.OfType<ComboBox>()).ToArray();
+        File.WriteAllText(Path.Combine(output,"settings-debug.txt"),"rows="+form.Children.Count+"; combos="+string.Join(";",logicalCombos.Select(c=>string.Join(",",c.Items.OfType<ComboBoxItem>().Select(i=>i.Tag)))));
+        var mode=logicalCombos.Single(c=>c.Items.OfType<ComboBoxItem>().Any(i=>Equals(i.Tag,"after")));
+        if(!Equals(((ComboBoxItem)mode.SelectedItem).Tag,"after"))throw new Exception("New installs should default to background metadata");
+        mode.BringIntoView();await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        Capture(window,Path.Combine(output,"settings-metadata.png"));
+        mode.SelectedItem=mode.Items.OfType<ComboBoxItem>().Single(i=>Equals(i.Tag,"before"));
+        if(!settings.Save()||engine.Settings.Mp3MetadataMode!="before")throw new Exception("Automatic metadata mode did not save");
+        File.WriteAllText(Path.Combine(output,"v26-checks.json"),Json.Encode(new{passed=true,settings=engine.Settings.Mp3MetadataMode}));
+    }
+    static async Task CheckCache(Downloader engine,string output)
+    {
+        const string url="https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4";
+        var settings=engine.Settings;settings.Mp3MetadataMode="off";settings.DownloadDirectory=Path.Combine(output,"downloads");engine.SaveSettings(settings);
+        var watch=System.Diagnostics.Stopwatch.StartNew();await engine.Analyze(url);var first=watch.Elapsed.TotalSeconds;
+        await engine.Accept(new(Guid.NewGuid().ToString("N"),url,"mp3"));
+        using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        while(engine.Jobs[0].AnalysisSeconds is null){timeout.Token.ThrowIfCancellationRequested();await Task.Delay(40,timeout.Token);}
+        var job=engine.Jobs[0];if(job.AnalysisSeconds>=1)throw new Exception($"Cached link was re-analyzed: {job.AnalysisSeconds:F2}s");
+        if(job.State is not (JobState.Completed or JobState.Failed))await engine.Pause(job.Id);
+        File.WriteAllText(Path.Combine(output,"cache-checks.json"),Json.Encode(new{passed=true,firstAnalysisSeconds=first,downloadAnalysisSeconds=job.AnalysisSeconds}));
     }
     sealed class ReviewHandler(byte[] image):System.Net.Http.HttpMessageHandler {
         protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken ct){await Task.Delay(60,ct);var path=request.RequestUri!.AbsolutePath;string json;

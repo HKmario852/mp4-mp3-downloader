@@ -7,8 +7,11 @@ public sealed partial class Downloader : IAsyncDisposable
     readonly Store store; readonly string binaryDir, workDir; readonly object gate = new(); readonly SemaphoreSlim intake = new(1);
     readonly List<DownloadJob> jobs; readonly List<DownloadGroup> groups;
     readonly ConcurrentDictionary<string, List<BrowserCookie>> credentials = new();
+    readonly ConcurrentDictionary<string, (MediaInfo Info, DateTimeOffset At)> analysisCache = new();
+    readonly ConcurrentDictionary<string, MediaInfo> deferredInfo = new();
+    readonly Dictionary<string,Task> metadataRunning = [];
     readonly Dictionary<string, (CancellationTokenSource ct, Task task)> running = [];
-    readonly CancellationTokenSource lifetime = new(); readonly Task loop; readonly MusicMetadata music = new();
+    readonly CancellationTokenSource lifetime = new(); readonly Task loop; readonly MusicMetadata music;
     public Preferences Settings { get; private set; }
     public event Action<string>? Notify;
     public Func<MusicCandidate[],CancellationToken,Task<MusicCandidate?>>? ResolveMusic {get;set;}
@@ -16,9 +19,9 @@ public sealed partial class Downloader : IAsyncDisposable
     public event Action<DownloadJob>? ChoiceRequested;
     public Func<string, Task<bool>>? RetryCover;
     public Func<byte[], string, Task>? WriteExternalCover;
-    public Downloader(Store store, string binaryDir, string workDir)
+    public Downloader(Store store, string binaryDir, string workDir, MusicMetadata? musicService = null)
     {
-        this.store = store; this.binaryDir = binaryDir; this.workDir = workDir; System.IO.Directory.CreateDirectory(workDir);
+        this.store = store; this.binaryDir = binaryDir; this.workDir = workDir; music=musicService??new(); System.IO.Directory.CreateDirectory(workDir);
         Settings = store.Preferences(); jobs = store.Load(); groups = store.Groups();
         foreach (var j in jobs.Where(j => j.State is not (JobState.Completed or JobState.Cancelled or JobState.Failed or JobState.PendingChoice))) { j.State = JobState.Paused; j.Speed = 0; j.Eta = 0; if (j.HadCredentials) j.Error = "請從擴充功能重新傳送登入憑證"; store.Save(j); }
         // Credentials are intentionally not persisted. Remove only our credential files after a crash.
@@ -74,6 +77,8 @@ public sealed partial class Downloader : IAsyncDisposable
                 lock (gate)
                 {
                     foreach (var id in running.Where(k => k.Value.task.IsCompleted).Select(k => k.Key).ToArray()) { running[id].ct.Dispose(); running.Remove(id); }
+                    foreach (var id in metadataRunning.Where(k => k.Value.IsCompleted).Select(k => k.Key).ToArray()) metadataRunning.Remove(id);
+                    if (metadataRunning.Count == 0) foreach (var j in jobs.Where(j => j.State == JobState.Completed && j.PendingMetadata).Take(1)) metadataRunning[j.Id] = Task.Run(() => EnrichCompleted(j,lifetime.Token));
                     foreach (var j in jobs.Where(j => j.State == JobState.Queued && (NetworkPermitted?.Invoke(Settings)??true)).Take(Math.Max(0, Settings.Concurrency - running.Count)).ToArray())
                     {
                         j.State = JobState.Analyzing; var ct = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
@@ -105,18 +110,24 @@ public sealed partial class Downloader : IAsyncDisposable
             else if (j.HadCredentials) throw new IOException("登入憑證已過期，請從擴充功能重新傳送");
             else if(Settings.CookieFile.Length>0&&new[]{"youtube.com","www.youtube.com","m.youtube.com","youtu.be"}.Contains(new Uri(j.Url).Host)){if(!File.Exists(Settings.CookieFile))throw new IOException("Cookie 檔案不存在 / Cookie file missing");File.Copy(Settings.CookieFile,cookiePath,true);auth.AddRange(["--cookies",cookiePath]);}
             if (j.IsGroupRoot) { await RetryOperation(j,options,async()=>{await Discover(j,auth,ct);return true;},ct); return; }
-            var info = await RetryOperation(j,options,()=>Analyze(j.Url,auth,ct),ct);
+            var analysisWatch=Stopwatch.StartNew();
+            var info = auth.Count==0 && analysisCache.TryGetValue(j.Url,out var cached) && DateTimeOffset.UtcNow-cached.At<TimeSpan.FromMinutes(10)
+                ? cached.Info : await RetryOperation(j,options,()=>Analyze(j.Url,auth,ct),ct);
+            j.AnalysisSeconds=analysisWatch.Elapsed.TotalSeconds;
             j.Duration = info.Duration;
             if (!j.IsUserEdited) { j.Title = Settings.CleanTitle ? Validation.CleanTitle(info.Title) : info.Title; j.Artist = info.Artist; j.Album = info.Album; }
             j.Thumbnail = info.Thumbnail; store.Save(j);
+            var transferWatch=Stopwatch.StartNew();
             await RetryOperation(j,options,async()=>{await Download(j,info,work,auth,ct);return true;},ct);
+            j.TransferSeconds=transferWatch.Elapsed.TotalSeconds;
             ct.ThrowIfCancellationRequested(); j.State = JobState.Processing; j.Speed = 0; j.Eta = 0; store.Save(j);
+            var processingWatch=Stopwatch.StartNew();
             var file = Path.Combine(work,"media."+j.Extension); if(!File.Exists(file))throw new IOException("下載完成但找不到輸出檔案");
             if (j.Extension == "mp3")
             {
                 var doc = Id3Document.Read(file);
                 var covers = new List<Cover>();
-                if (Settings.MusicBrainz) {
+                if (options.Mp3MetadataMode=="before") {
                     j.MetadataStatus = "MusicBrainz：正在查詢歌曲及專輯封面…"; store.Save(j);
                     var metadata = await music.Recognize(j.Title,j.Artist,j.Duration,file,FfmpegPath,Settings.AcoustIdClientKey,ct);
                     if(metadata.State==MusicLookupState.Ambiguous&&metadata.Choices is {Length:>0} choices&&ResolveMusic is not null){var chosen=await ResolveMusic(choices,ct);if(chosen is not null)try{metadata=await music.Recording(chosen.RecordingId,chosen.ReleaseId,ct);}catch(Exception e)when(!ct.IsCancellationRequested&&e is HttpRequestException or IOException or System.Text.Json.JsonException or OperationCanceledException){metadata=new(MusicLookupState.Unavailable);}}
@@ -125,27 +136,27 @@ public sealed partial class Downloader : IAsyncDisposable
                     if (!j.IsUserEdited) { if (metadata.Title is { Length: > 0 }) j.Title = metadata.Title; if (metadata.Artist is { Length: > 0 }) j.Artist = metadata.Artist; if (metadata.Album is { Length: > 0 }) j.Album = metadata.Album; }
                     if (metadata.Cover is not null) covers.Add(metadata.Cover);
                     store.Save(j);
-                } else j.MetadataStatus = "MusicBrainz：已在設定關閉";
+                } else j.MetadataStatus = options.Mp3MetadataMode=="after"?"MP3 已下載；標籤與封面稍後辨識":"MusicBrainz：已在設定關閉";
                 if(options.KeepMetadata){doc.SetText("TIT2", j.Title); doc.SetText("TPE1", j.Artist); doc.SetText("TALB", j.Album);}
                 covers=covers.Where(c=>AlbumArtwork.Accept(c.Bytes)).ToList();
-                var sourceArt=await FindSourceArtwork(j.Url,info,auth,ct);
-                if(sourceArt is null&&covers.Count==0&&!Settings.MusicBrainz){var fallback=await music.Lookup(j.Title,j.Artist,j.Duration,ct);if(fallback.Cover is not null)covers.Add(fallback.Cover);j.MetadataStatus=fallback.Message;}
+                var sourceArt=options.Mp3MetadataMode switch {"after"=>null,"off"=>await AlbumArtwork.Source(info,ct),_=>await FindSourceArtwork(j.Url,info,auth,ct)};
                 covers=CoverOrder.ThumbnailFirst(covers,sourceArt);
                 if(options.EmbedThumbnail)doc.SetCovers(covers);
-                j.MetadataStatus += covers.Count>0?" · 已取得近正方形專輯封面":" · 未找到專輯封面";store.Save(j);
+                if(options.Mp3MetadataMode!="after")j.MetadataStatus += covers.Count>0?" · 已取得近正方形專輯封面":" · 未找到專輯封面";store.Save(j);
 
                 var tagged = file + ".tagged"; if (File.Exists(tagged)) File.Delete(tagged); await doc.Write(file, tagged, ct); File.Move(tagged, file, true);
                 System.IO.Directory.CreateDirectory(j.Directory);
                 if (options.KeepThumbnail && covers.Count > 0 && WriteExternalCover is not null) await WriteExternalCover(covers[0].Bytes, Path.Combine(j.Directory, "cover.jpg"));
             }
             ct.ThrowIfCancellationRequested(); System.IO.Directory.CreateDirectory(j.Directory);
-            if(!await PublishFinal(j,file,work,options,ct))return;
+            if(j.Extension=="mp3"&&options.Mp3MetadataMode=="after") { j.PendingMetadata=true; deferredInfo[j.Id]=info; }
+            if(!await PublishFinal(j,file,work,options,ct,()=>processingWatch.Elapsed.TotalSeconds))return;
             if (j.GroupId is null && Settings.NotifyComplete) Notify?.Invoke("下載完成：" + j.Title);
             Completed?.Invoke(j);
         }
-        catch (OperationCanceledException) { lock (gate) { if (j.State != JobState.Completed && j.State != JobState.Cancelled) j.State = JobState.Paused; j.Speed = 0; j.Eta = 0; store.Save(j); } }
-        catch (Exception e) { if (j.State is JobState.Cancelled or JobState.Completed) return; j.State = JobState.Failed; j.Error = e.Message; j.Stderr = e is DownloadException d ? d.Stderr : null;WriteFailureLog(j); j.Speed = 0; j.Eta = 0; store.Save(j); if (j.IsGroupRoot && j.GroupId is not null) { var g = Groups.First(x => x.Id == j.GroupId); g.DiscoveryComplete = true; g.DiscoveryFailures++; store.SaveGroup(g); } else if (j.GroupId is null && Settings.NotifyFailure) Notify?.Invoke("下載失敗：" + j.Title); }
-        finally { try { if (File.Exists(cookiePath)) File.Delete(cookiePath); } catch(IOException) { } if (j.State is JobState.Completed or JobState.Cancelled or JobState.Failed) credentials.TryRemove(j.Id, out _); if(j.State==JobState.Completed&&j.Error is null || j.State==JobState.Cancelled || j.State==JobState.Failed&&Settings.CleanFailed) { try { CleanWork(j); } catch(IOException e) { j.Error="暫存清理未完成 / Temporary cleanup incomplete: "+e.Message;store.Save(j); } } }
+        catch (OperationCanceledException) { lock (gate) { if (j.State != JobState.Completed && j.State != JobState.Cancelled) j.State = JobState.Paused; j.PendingMetadata=false;j.Speed = 0; j.Eta = 0; store.Save(j); } }
+        catch (Exception e) { if (j.State is JobState.Cancelled or JobState.Completed) return; j.State = JobState.Failed; j.PendingMetadata=false;j.Error = e.Message; j.Stderr = e is DownloadException d ? d.Stderr : null;WriteFailureLog(j); j.Speed = 0; j.Eta = 0; store.Save(j); if (j.IsGroupRoot && j.GroupId is not null) { var g = Groups.First(x => x.Id == j.GroupId); g.DiscoveryComplete = true; g.DiscoveryFailures++; store.SaveGroup(g); } else if (j.GroupId is null && Settings.NotifyFailure) Notify?.Invoke("下載失敗：" + j.Title); }
+        finally { try { if (File.Exists(cookiePath)) File.Delete(cookiePath); } catch(IOException) { } if(j.State!=JobState.Completed)deferredInfo.TryRemove(j.Id,out _);if (j.State is JobState.Completed or JobState.Cancelled or JobState.Failed) credentials.TryRemove(j.Id, out _); if(j.State==JobState.Completed&&j.Error is null || j.State==JobState.Cancelled || j.State==JobState.Failed&&Settings.CleanFailed) { try { CleanWork(j); } catch(IOException e) { j.Error="暫存清理未完成 / Temporary cleanup incomplete: "+e.Message;store.Save(j); } } }
     }
     async Task<T> RetryOperation<T>(DownloadJob j,Preferences p,Func<Task<T>> operation,CancellationToken ct) {
         for(int attempt=0;;attempt++)try{return await operation();}
@@ -169,7 +180,9 @@ public sealed partial class Downloader : IAsyncDisposable
         static double? Number(JsonElement element, string key) => element.TryGetProperty(key, out var n) && n.ValueKind == JsonValueKind.Number && n.TryGetDouble(out var value) ? value : null;
         static string Text(JsonElement element, string key) => element.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : "";
         var formats = root.TryGetProperty("formats", out var fs) && fs.ValueKind == JsonValueKind.Array ? fs.EnumerateArray().Select(f => new MediaFormat(Text(f, "ext"), Number(f, "height") is double h ? (int)h : null, Text(f, "vcodec") is not ("" or "none"), Text(f, "acodec") is not ("" or "none"), (Number(f, "filesize") ?? Number(f, "filesize_approx")) is double b ? (long)b : null, Number(f, "tbr"), Text(f, "format_id"), Text(f, "vcodec"), Number(f, "filesize") is null)).ToArray() : [];
-        return new(Get("track") is { Length: > 0 } track ? track : Get("title"), Get("artist"), Get("album"), Get("thumbnail") is { Length: > 0 } t ? t : null, Number(root, "duration"), formats, AlbumArtwork.Candidates(root));
+        var info=new MediaInfo(Get("track") is { Length: > 0 } track ? track : Get("title"), Get("artist"), Get("album"), Get("thumbnail") is { Length: > 0 } t ? t : null, Number(root, "duration"), formats, AlbumArtwork.Candidates(root));
+        if(auth is null || auth.Count==0){if(analysisCache.Count>64)analysisCache.Clear();analysisCache[url]=(info,DateTimeOffset.UtcNow);}
+        return info;
     }
     async Task Discover(DownloadJob parent, List<string> auth, CancellationToken ct)
     {
@@ -217,5 +230,5 @@ public sealed partial class Downloader : IAsyncDisposable
             var removed=Jobs.First(j=>j.Id==id);CleanWork(removed);credentials.TryRemove(id,out _);
         }
     }
-    public async ValueTask DisposeAsync() { lifetime.Cancel(); await loop; Task[] tasks; lock (gate) { foreach (var r in running.Values) r.ct.Cancel(); tasks = running.Values.Select(r => r.task).ToArray(); } await Task.WhenAll(tasks); credentials.Clear(); store.Checkpoint(); lifetime.Dispose(); }
+    public async ValueTask DisposeAsync() { lifetime.Cancel(); await loop; Task[] tasks; lock (gate) { foreach (var r in running.Values) r.ct.Cancel(); tasks = running.Values.Select(r => r.task).Concat(metadataRunning.Values).ToArray(); } await Task.WhenAll(tasks); credentials.Clear(); store.Checkpoint(); lifetime.Dispose(); }
 }

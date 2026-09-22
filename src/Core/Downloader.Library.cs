@@ -32,13 +32,13 @@ public sealed partial class Downloader
         if(info.EnumerateFileSystemInfos("*",SearchOption.AllDirectories).Any(f=>(f.Attributes&FileAttributes.ReparsePoint)!=0))throw new IOException("暫存目錄包含連結 / Work directory contains a link");
         System.IO.Directory.Delete(dir,true);
     }
-    async Task<bool> PublishFinal(DownloadJob j,string file,string work,Preferences p,CancellationToken ct)
+    async Task<bool> PublishFinal(DownloadJob j,string file,string work,Preferences p,CancellationToken ct,Func<double>? processingSeconds=null)
     {
         await publishGate.WaitAsync(ct);
         try {
             var stem=DownloadOptions.FileStem(j,p);var destination=Path.Combine(j.Directory,stem+"."+j.Extension);var action=p.DuplicateAction;
             if(File.Exists(destination)&&action=="ask") action=ResolveDuplicate is null?throw new IOException("檔案已存在，請開啟 App 選擇處理方式 / File exists; open the app"):await ResolveDuplicate(destination,ct);
-            if(File.Exists(destination)&&action=="skip"){j.State=JobState.Cancelled;j.Error="已跳過重複檔案 / Duplicate skipped";store.Save(j);return false;}
+            if(File.Exists(destination)&&action=="skip"){j.State=JobState.Cancelled;j.PendingMetadata=false;j.Error="已跳過重複檔案 / Duplicate skipped";store.Save(j);return false;}
             if(action is "rename" or "ask")destination=Validation.UniquePath(j.Directory,stem,"."+j.Extension);
             if(action is not ("rename" or "ask" or "overwrite" or "skip"))throw new IOException("無效重複檔案選項");
             // Copy to a unique sibling first. Only a verified copy can replace an existing file.
@@ -48,7 +48,7 @@ public sealed partial class Downloader
                 await using(var a=File.OpenRead(file))await using(var b=File.OpenRead(staging)){if(!((await SHA256.HashDataAsync(a,ct)).SequenceEqual(await SHA256.HashDataAsync(b,ct))))throw new IOException("檔案複製驗證失敗 / Copy verification failed");}
                 ct.ThrowIfCancellationRequested();File.Move(staging,destination,action=="overwrite");
             } finally {if(File.Exists(staging))File.Delete(staging);}
-            j.FilePath=destination;j.State=JobState.Completed;j.Progress=100;j.TotalBytes=new FileInfo(destination).Length;j.Bytes=j.TotalBytes.Value;j.CompletedAt=DateTimeOffset.UtcNow;store.Save(j);
+            j.FilePath=destination;j.ProcessingSeconds=processingSeconds?.Invoke();j.State=JobState.Completed;j.Progress=100;j.TotalBytes=new FileInfo(destination).Length;j.Bytes=j.TotalBytes.Value;j.CompletedAt=DateTimeOffset.UtcNow;store.Save(j);
             try {
                 foreach(var sidecar in System.IO.Directory.EnumerateFiles(work,"media.*").Where(f=>Path.GetExtension(f) is ".srt" or ".vtt" or ".jpg")) {
                     var suffix=Path.GetFileName(sidecar)[5..];var target=Path.Combine(j.Directory,Path.GetFileNameWithoutExtension(destination)+suffix);File.Copy(sidecar,target,true);

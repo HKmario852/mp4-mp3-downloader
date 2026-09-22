@@ -64,6 +64,7 @@ public sealed partial class Preferences
         static void One(string value, params string[] allowed) { if (!allowed.Contains(value)) throw new ArgumentException("設定選項無效 / Invalid setting: " + value); }
         One(Theme,"dark","light","system"); One(Language,"zh-Hant","en"); One(DuplicateAction,"ask","overwrite","rename","skip");
         One(DefaultType,"video","audio","ask"); One(VideoFormat,"mp4","mkv","webm"); One(AudioFormat,"mp3","m4a","flac","wav");
+        One(Mp3MetadataMode,"after","before","off");
         One(VideoCodec,"auto","h264","h265","av1"); One(ProxyMode,"off","system","custom"); One(SubtitleFormat,"srt","vtt");
         One(CompletionAction,"none","file","folder"); One(AllowedNetwork,"any","wifi","ethernet"); One(SoundName,"default","asterisk","exclamation");
         if (RetryCount is < 0 or > 20 || RetrySeconds is < 1 or > 3600 || TimeoutSeconds is < 5 or > 600 || ConnectionRetries is < 0 or > 20 || Fragments is < 1 or > 10 || LimitKiB is < 0 or > 1000000 || ScheduledKiB is < 1 or > 1000000) throw new ArgumentException("數值超出允許範圍 / Value out of range");

@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     MediaInfo? previewInfo;
     readonly Dictionary<string, MediaInfo> mediaCache = new();
     int analysisVersion;
+    CancellationTokenSource? previewAnalysis;
     bool closePrompt; public bool AllowClose { get; set; }
     public MainWindow(Downloader engine, Store store)
     {
@@ -95,11 +96,15 @@ public partial class MainWindow : Window
     async void AnalyzeClick(object sender, RoutedEventArgs e)
     {
         var url = UrlBox.Text.Trim(); var version = ++analysisVersion; previewJobId = null; MetadataLabel.Text = "";
-        try { StatusLabel.Text = "正在分析連結…"; var info = await engine.Analyze(url); mediaCache[url] = info; if (version != analysisVersion || UrlBox.Text.Trim() != url) return; ApplyPreview(info); StatusLabel.Text = "選擇格式及品質後開始下載"; }
+        previewAnalysis?.Cancel();using var request=new CancellationTokenSource();previewAnalysis=request;
+        var timer=Stopwatch.StartNew();
+        try { StatusLabel.Text = "正在分析連結…"; var info = await engine.Analyze(url,ct:request.Token); mediaCache[url] = info; if (version != analysisVersion || UrlBox.Text.Trim() != url) return; ApplyPreview(info); StatusLabel.Text = $"連結分析完成（{timer.Elapsed.TotalSeconds:F1} 秒）；下載會重用結果"; }
+        catch (OperationCanceledException)when(request.IsCancellationRequested) { }
         catch (Exception ex) { if (version == analysisVersion) StatusLabel.Text = ex.Message; }
+        finally { if(ReferenceEquals(previewAnalysis,request))previewAnalysis=null; }
     }
     public void ApplyPreview(MediaInfo info) { previewInfo = info; MediaTitle.Text = info.Title; MediaSubtitle.Text = info.Duration is double d ? $"片長 {TimeSpan.FromSeconds(d):hh\\:mm\\:ss}" : "已取得影片資訊"; ShowImage(info.Thumbnail); UpdateQualities(); }
-    void UrlChanged(object sender, TextChangedEventArgs e) { analysisVersion++; previewInfo = null; previewJobId = null; if (MetadataLabel is not null) MetadataLabel.Text = ""; if (QualityBox is not null && EstimateLabel is not null) UpdateQualities(); }
+    void UrlChanged(object sender, TextChangedEventArgs e) { analysisVersion++; previewAnalysis?.Cancel(); previewInfo = null; previewJobId = null; if (MetadataLabel is not null) MetadataLabel.Text = ""; if (QualityBox is not null && EstimateLabel is not null) UpdateQualities(); }
     void UpdateQualities()
     {
         var selected = QualityBox.SelectedValue is int q ? q : mode == DownloadMode.Mp3 ? engine.Settings.AudioKbps : engine.Settings.VideoHeight;
@@ -184,7 +189,8 @@ public partial class MainWindow : Window
     void ErrorClick(object s, RoutedEventArgs e)
     {
         if (JobGrid.SelectedItem is not DownloadJob j) return; var dialog = Dialogs.Basic(this, "下載診斷", 650, 450); var panel = new DockPanel { Margin = new Thickness(18) }; var export = new Button { Content = "匯出 .log" }; DockPanel.SetDock(export, Dock.Bottom); panel.Children.Add(export);
-        var text = (j.Error ?? "此任務未記錄錯誤。") + "\n\n" + (j.Stderr ?? ""); panel.Children.Add(new TextBox { Text = text, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        var durations=$"連結分析：{j.AnalysisSeconds?.ToString("F1")??"—"} 秒\n傳輸及轉檔：{j.TransferSeconds?.ToString("F1")??"—"} 秒\n檔案處理：{j.ProcessingSeconds?.ToString("F1")??"—"} 秒\n標籤與封面：{j.MetadataStatus}\n\n";
+        var text = durations+(j.Error ?? "此任務未記錄錯誤。") + "\n\n" + (j.Stderr ?? ""); panel.Children.Add(new TextBox { Text = text, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         export.Click += (_, _) => { var save = new Microsoft.Win32.SaveFileDialog { Filter = "診斷日誌|*.log", FileName = "omni-diagnostic.log" }; if (save.ShowDialog(dialog) == true) { File.WriteAllText(save.FileName, ProcessRunner.Redact(text)); Notifications.Show("診斷日誌已匯出"); } }; dialog.Content = panel; dialog.Show();
     }
     async void TagsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;history=true;tagsPage=true;ShowTagEditor();}
