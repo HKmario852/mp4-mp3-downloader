@@ -20,7 +20,7 @@ public sealed partial class MusicMetadata
     static readonly HttpClient Http = new(new SocketsHttpHandler { MaxConnectionsPerServer = 5 }) { Timeout = TimeSpan.FromSeconds(20) };
     static readonly SemaphoreSlim Pool = new(5), Rate = new(1); static DateTimeOffset next;
     readonly HttpClient client;
-    static MusicMetadata() => Http.DefaultRequestHeaders.UserAgent.ParseAdd("MP4MP3Downloader/0.2.4 (https://github.com/HKmario852)");
+    static MusicMetadata() => Http.DefaultRequestHeaders.UserAgent.ParseAdd("MP4MP3Downloader/0.2.5 (https://github.com/HKmario852)");
     public MusicMetadata(HttpClient? client = null) => this.client = client ?? Http;
     public static MusicQuery Prepare(string title, string artist, double? duration)
     {

@@ -10,6 +10,9 @@ namespace Omni.Windows;
 public partial class MainWindow : Window
 {
     readonly Downloader engine; readonly Store store; readonly DispatcherTimer timer; readonly HashSet<string> choices = []; bool history, tagsPage, recentSelection, failures, collapsed; DownloadMode mode = DownloadMode.Mp4; string groupSignature = "";
+    public Func<MusicMetadata> MusicServiceFactory {get;set;}=()=>new();
+    public string ActiveView {get;private set;}="main"; AcoustIdReviewView? reviewView;
+    public void OpenAcoustIdReview(TagEditorView editor,DownloadJob job){if(reviewView is not null)return;var previous=Content;ActiveView="acoustid-review";reviewView=new AcoustIdReviewView(this,job,engine,store,async(fields,cover,undo,count)=>{Content=previous;reviewView=null;ActiveView="tags";if(fields is not null)await editor.ReviewApplied(job,fields,cover,undo,count);},MusicServiceFactory());Content=reviewView;}
     TagEditorView? tagEditorView; SettingsView? settingsView; LibraryView? libraryView; string lastClipboard="";
     string? thumbnailUrl;
     bool refreshing;
@@ -26,7 +29,7 @@ public partial class MainWindow : Window
         Microsoft.Win32.SystemEvents.UserPreferenceChanged+=SystemThemeChanged;Closed+=(_,_)=>Microsoft.Win32.SystemEvents.UserPreferenceChanged-=SystemThemeChanged;
         engine.WriteExternalCover = (bytes, path) => Dispatcher.InvokeAsync(() => CoverIO.Write(bytes, path, this)).Task.Unwrap();
         timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) }; timer.Tick += (_, _) => Refresh(); timer.Start();
-        Closing += async (_, e) => { if (!AllowClose) { e.Cancel = true;if(closePrompt||tagEditorView?.Busy==true)return;closePrompt=true;try{if(!await LeaveSettings())return;ShowDownloads();if(engine.Settings.CloseToTray){ShowInTaskbar=false;Hide();}else await ExitApplication();}finally{closePrompt=false;} } };
+        Closing += async (_, e) => { if (!AllowClose) { e.Cancel = true;if(reviewView is not null){reviewView.Back();return;}if(closePrompt||tagEditorView?.Busy==true)return;closePrompt=true;try{if(!await LeaveSettings())return;ShowDownloads();if(engine.Settings.CloseToTray){ShowInTaskbar=false;Hide();}else await ExitApplication();}finally{closePrompt=false;} } };
         SizeChanged += (_, _) => { DetailColumn.Width = new GridLength(ActualWidth < 1100 ? 320 : 380); };
         UpdateNavigation();Loaded+=(_,_)=>ApplyLanguage();
         Refresh(); StatusLabel.Text = engine.ToolsReady ? "已準備就緒" : "請先執行 scripts/Prepare-Tools.ps1 準備 yt-dlp 與 ffmpeg。";

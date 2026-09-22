@@ -16,9 +16,9 @@ data class MusicResult(val status:String,val title:String?=null,val artist:Strin
 object Metadata {
     private val client=OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(20,TimeUnit.SECONDS).build()
     private val pool=Semaphore(5);private val rate=Mutex();private var next=0L
-    private fun request(url: String)=Request.Builder().url(url.replaceFirst("http://","https://")).header("User-Agent","MP4MP3Downloader/0.2.4 (https://github.com/HKmario852)").build()
+    private fun request(url: String)=Request.Builder().url(url.replaceFirst("http://","https://")).header("User-Agent","MP4MP3Downloader/0.2.5 (https://github.com/HKmario852)").build()
     suspend fun fetch(url: String,description: String,type: Int): Art? = withContext(Dispatchers.IO) {
-        client.newCall(request(url)).execute().use { r ->if(!r.isSuccessful)return@withContext null;val body=r.body ?: return@withContext null;if(body.contentLength()>32*1024*1024) return@withContext null
+        client.newCall(request(url)).awaitResponse().use { r ->if(!r.isSuccessful)return@withContext null;val body=r.body ?: return@withContext null;if(body.contentLength()>32*1024*1024) return@withContext null
             val out=java.io.ByteArrayOutputStream();body.byteStream().use{i->val b=ByteArray(65536);while(true){val n=i.read(b);if(n<0)break;if(out.size()+n>32*1024*1024)throw java.io.IOException("封面過大");out.write(b,0,n)}};val bytes=out.toByteArray();val mime=when{bytes.size>2&&bytes[0]==0xff.toByte()&&bytes[1]==0xd8.toByte()->"image/jpeg";bytes.size>8&&bytes[0]==0x89.toByte()&&bytes[1]==80.toByte()->"image/png";bytes.size>12&&String(bytes,8,4)=="WEBP"->"image/webp";else->return@withContext null};Art(bytes,mime,description,type) }
     }
     fun prepare(title:String,artist:String):Pair<String,String> {
@@ -34,7 +34,7 @@ object Metadata {
         return if(first.title==null&&first.status.contains("查無")&&artist.isNotBlank())lookupOnce(title,"",duration)else first
     }
     internal suspend fun json(url:String,musicBrainz:Boolean=true):JSONObject=withContext(Dispatchers.IO){
-        suspend fun read():JSONObject=client.newCall(request(url)).execute().use{r->if(!r.isSuccessful)throw java.io.IOException("服務暫時無法使用 (${r.code})");JSONObject(r.body!!.string())}
+        suspend fun read():JSONObject=client.newCall(request(url)).awaitResponse().use{r->if(!r.isSuccessful)throw java.io.IOException("服務暫時無法使用 (${r.code})");JSONObject(r.body!!.string())}
         if(!musicBrainz)read()else rate.withLock{delay((next-System.currentTimeMillis()).coerceAtLeast(0));next=System.currentTimeMillis()+1000;read()}
     }
     private suspend fun lookupOnce(title:String,artist:String,duration:Double?):MusicResult=pool.withPermit {

@@ -20,7 +20,7 @@ class TagEditorUiTest {
   compose.onNodeWithTag("tag-row-tag-ui-test").performScrollTo().performClick()
   compose.waitUntil(10000){compose.onAllNodes(hasSetTextAction() and hasText("測試歌曲")).fetchSemanticsNodes().isNotEmpty()}
   val title=compose.onNode(hasSetTextAction() and hasText("標題 / Title"));title.performScrollTo().performTextReplacement("invalid/title")
-  compose.onNodeWithText("儲存標籤").assertIsNotEnabled()
+  compose.onNodeWithText("儲存標籤").assertIsEnabled()
   title.performTextReplacement("新歌曲名")
   compose.onNodeWithText("儲存標籤").performClick()
   try{compose.waitUntil(10000){engine.get(task.id).title=="新歌曲名"}}catch(e:Throwable){File(compose.activity.getExternalFilesDir(null),"tag-failure.txt").writeText(compose.onRoot(useUnmergedTree=true).printToString()+"\nENGINE="+engine.get(task.id));throw e}

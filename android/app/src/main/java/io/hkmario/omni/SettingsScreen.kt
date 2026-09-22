@@ -51,7 +51,7 @@ private val fields=listOf(
      Card(colors=CardDefaults.cardColors(containerColor=Panel)){Column(Modifier.fillMaxWidth().padding(14.dp)){
       if(isBool)Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){Text(label,Modifier.weight(1f));Switch(v.toBoolean(),{set(f.key,it.toString())})}
       else if(f.choices.isNotEmpty()){Text(label);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){f.choices.forEach{choice->FilterChip(v==choice,{set(f.key,choice)},label={Text(choiceLabel(p,f.key,choice))})}}}
-      else OutlinedTextField(v,{set(f.key,it)},label={Text(label)},singleLine=true,modifier=Modifier.fillMaxWidth())
+      else OutlinedTextField(v,{set(f.key,it)},label={Text(label)},singleLine=true,visualTransformation=if(f.key=="acoustIdClientKey")androidx.compose.ui.text.input.PasswordVisualTransformation()else androidx.compose.ui.text.input.VisualTransformation.None,modifier=Modifier.fillMaxWidth())
       if(f.key.endsWith("Naming"))Text(text(p,"範例：","Example: ")+v.replace("{title}","ENDROLL").replace("{artist}","HaThA").replace("{album}","Album").replace("{quality}","1080p").replace("{date}","2026-09-15")+if(f.key=="audioNaming")".${value("audioFormat")}"else".${value("videoFormat")}",color=Muted)
      }}
     }

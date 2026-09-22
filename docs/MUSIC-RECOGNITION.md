@@ -1,3 +1,5 @@
+0.2.5：公開版本已配置 App 的 AcoustID application key，毋須自行註冊。下文自行註冊僅適用於自訂 key。Scan 現在使用獨立核對頁，按「套用所選標籤」才會正式寫入；預設保留目前封面。
+
 # MusicBrainz 與 Scan
 
 「查找歌曲標籤」使用 MusicBrainz 公開 API，不需要 MusicBrainz 帳號或密碼。可輸入歌曲名、歌手，或 MusicBrainz recording 網址。選擇歌曲及專輯版本後先預覽，按「儲存標籤」才寫入檔案。

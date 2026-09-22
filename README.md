@@ -1,4 +1,4 @@
-最新版本：[0.2.4](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.4) · [更新內容](docs/RELEASE-0.2.4.md)
+最新版本：[0.2.5](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.5) · [更新內容](docs/RELEASE-0.2.5.md)
 
 最新版本：[0.2.2](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.2) · [更新內容](docs/RELEASE-0.2.2.md)
 
@@ -95,7 +95,7 @@ Cookie 只走 Native Messaging / current-user Named Pipe。綠色勾號表示主
 - MP4 品質最高 4K / 最佳（同樣限制 4K），MP3 128/192/256/320 kbps。
 - 已下載的多關鍵字 AND 搜尋，篩選結果快照清空，保留實體檔案。
 - MP3 批次 ID3 編輯：未修改欄位保留、Track 固定填值、空字串保留 Frame、Title 即時驗證及重新命名。
-- MusicBrainz 預設關閉；開啟後可靠配對歌曲與專輯版本，取得 Cover Art Archive 封面。Scan 需自行提供 AcoustID application key；參閱 [辨識設定](docs/MUSIC-RECOGNITION.md)。
+- MusicBrainz 預設關閉；開啟後可靠配對歌曲與專輯版本，取得 Cover Art Archive 封面。Scan 已配置本 App 的 AcoustID application key，可選填自訂 key；參閱 [辨識設定](docs/MUSIC-RECOGNITION.md)。
 - Windows 系統匣、Toast；Android 通知背景暫停/取消、Wi-Fi 工作階段授權、SAF 未知容量確認。
 - Android 初始儲存於 App 外部音樂資料夾，解除安裝會刪除；建議使用「選擇資料夾」儲存到共用 SAF 目錄。
 - 原始碼與發布資產位於公開 GitHub 倉庫 `HKmario852/mp4-mp3-downloader`；App 更新不需 GitHub 登入。

@@ -36,13 +36,16 @@ public sealed class Id3Document
     }
     public string Text(string id)
     {
+        if(id.StartsWith("TXXX:"))return Frames.Where(f=>f.Id=="TXXX").Select(f=>DecodeText(f.Data).Split('\0',2)).FirstOrDefault(p=>p.Length==2&&p[0]==id[5..])?.ElementAt(1)??"";
         if (id == "COMM") return Comment();
         var b = Frames.FirstOrDefault(f => f.Id == id)?.Data; if (b is null || b.Length < 2) return "";
         return (b[0] switch { 0 => Encoding.Latin1.GetString(b, 1, b.Length - 1), 1 => DecodeUtf16(b.AsSpan(1)), 2 => Encoding.BigEndianUnicode.GetString(b, 1, b.Length - 1), 3 => Encoding.UTF8.GetString(b, 1, b.Length - 1), _ => "" }).TrimEnd('\0');
     }
     static string DecodeUtf16(ReadOnlySpan<byte> b) => b.Length >= 2 && b[0] == 0xfe && b[1] == 0xff ? Encoding.BigEndianUnicode.GetString(b[2..]) : Encoding.Unicode.GetString(b.Length >= 2 && b[0] == 0xff && b[1] == 0xfe ? b[2..] : b);
+    static string DecodeText(byte[] b)=>b.Length<2?"":(b[0] switch{0=>Encoding.Latin1.GetString(b,1,b.Length-1),1=>DecodeUtf16(b.AsSpan(1)),2=>Encoding.BigEndianUnicode.GetString(b,1,b.Length-1),3=>Encoding.UTF8.GetString(b,1,b.Length-1),_=>""}).TrimEnd('\0');
     public void SetText(string id, string value)
     {
+        if(id.StartsWith("TXXX:")){var name=id[5..];var payload=new byte[]{1,0xff,0xfe}.Concat(Encoding.Unicode.GetBytes(name+"\0"+value+"\0")).ToArray();var index=Frames.FindIndex(f=>f.Id=="TXXX"&&DecodeText(f.Data).Split('\0')[0]==name);var frame=new Id3Frame("TXXX",[0,0],payload);if(index<0)Frames.Add(frame);else Frames[index]=frame;return;}
         if(id=="COMM"){SetRaw("COMM",[1, (byte)'e',(byte)'n',(byte)'g',0xff,0xfe,0,0,0xff,0xfe,..Encoding.Unicode.GetBytes(value),0,0]);return;}
         if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^T[A-Z0-9]{3}$") || id == "TXXX") throw new ArgumentException("此欄位需要進階 Raw Frame 編輯");
         // Keep a real empty frame, even when the string is empty.
@@ -100,9 +103,9 @@ public sealed record TagDelta(Dictionary<string, string> Text, Dictionary<string
 public sealed class TagEditor(Store store)
 {
     static readonly SemaphoreSlim serial = new(1);
-    public async Task Apply(IReadOnlyList<DownloadJob> jobs, TagDelta delta, bool persist = true, bool automaticCover = false)
+    public async Task Apply(IReadOnlyList<DownloadJob> jobs, TagDelta delta, bool persist = true, bool automaticCover = false,string? expectedHash=null)
     {
-        if (delta.Text.TryGetValue("TIT2", out var title) && Validation.TitleError(title) is { } error) throw new ArgumentException(error);
+        if (delta.RenameFile && delta.Text.TryGetValue("TIT2", out var checkedTitle) && Validation.TitleError(checkedTitle) is { } error) throw new ArgumentException(error);
         if (delta.RawBase64?.Keys.Any(k => k.Split('#')[0] == "TIT2") == true) throw new ArgumentException("請在 Title 欄位修改歌曲名");
         if (delta.Text.Count == 0 && delta.RawBase64?.Count is not > 0 && delta.Covers is null) return;
         await serial.WaitAsync();
@@ -110,12 +113,12 @@ public sealed class TagEditor(Store store)
         {
             foreach (var j in jobs)
             {
-                var source = j.FilePath ?? throw new IOException("找不到檔案"); var doc = Id3Document.Read(source);
+                var source = j.FilePath ?? throw new IOException("找不到檔案"); if(expectedHash is not null&&await TagReview.Hash(source)!=expectedHash)throw new IOException("檔案已被修改，請重新掃描");var doc = Id3Document.Read(source);
                 foreach (var (id, text) in delta.Text) doc.SetText(id, text); // TRCK fixed value, no increment.
                 foreach (var (id, encoded) in delta.RawBase64 ?? []) doc.SetRaw(id, Convert.FromBase64String(encoded));
                 if (delta.Covers is not null) doc.SetCovers(delta.Covers);
                 var temp = source + ".edit-" + Guid.NewGuid().ToString("N"); var backup = source + ".backup-" + Guid.NewGuid().ToString("N"); string destination = source;
-                if (delta.RenameFile && delta.Text.TryGetValue("TIT2", out title) && title.Length > 0 && !string.Equals(Path.GetFileNameWithoutExtension(source), title, StringComparison.Ordinal)) destination = Validation.UniquePath(Path.GetDirectoryName(source)!, title, ".mp3");
+                if (delta.RenameFile && delta.Text.TryGetValue("TIT2", out var title) && title.Length > 0 && !string.Equals(Path.GetFileNameWithoutExtension(source), title, StringComparison.Ordinal)) destination = Validation.UniquePath(Path.GetDirectoryName(source)!, title, ".mp3");
                 try
                 {
                     await doc.Write(source, temp); File.Replace(temp, source, backup);

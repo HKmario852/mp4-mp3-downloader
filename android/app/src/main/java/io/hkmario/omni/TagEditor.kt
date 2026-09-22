@@ -10,16 +10,16 @@ import java.io.IOException
 
 class TagEditor(private val engine:Engine) {
     companion object {private val lock=Mutex()}
-    suspend fun apply(ids:Set<String>,delta:Map<String,String>,raw:Map<String,ByteArray>,cover:ByteArray?,removeCover:Boolean=false,renameFile:Boolean=true,automaticCover:Boolean=false)=lock.withLock { withContext(Dispatchers.IO) {
-        delta["TIT2"]?.let{require(Rules.titleError(it)==null){Rules.titleError(it)!!}};require(raw.keys.none{it.substringBefore('#')=="TIT2"}){"請用 Title 欄位修改歌曲名"}
+    suspend fun apply(ids:Set<String>,delta:Map<String,String>,raw:Map<String,ByteArray>,cover:ByteArray?,removeCover:Boolean=false,renameFile:Boolean=true,automaticCover:Boolean=false,expectedHash:String?=null)=lock.withLock { withContext(Dispatchers.IO) {
+        if(renameFile)delta["TIT2"]?.let{require(Rules.titleError(it)==null){Rules.titleError(it)!!}};require(raw.keys.none{it.substringBefore('#')=="TIT2"}){"請用 Title 欄位修改歌曲名"}
         if(renameFile&&!delta["TIT2"].isNullOrEmpty())ids.forEach{val t=engine.get(it);require(t.path?.startsWith("content://")!=true||t.directory.startsWith("content://")){"請先加入歌曲所在資料夾，取得重新命名授權"}}
         val directories=linkedMapOf<String,String>()
         ids.forEach { id ->
-            val task=engine.get(id);val path=task.path ?: throw IOException("找不到音訊檔案");val content=path.startsWith("content://")
+            val task=engine.get(id);val path=task.path ?: throw IOException("找不到音訊檔案");val content=path.startsWith("content://");if(expectedHash!=null)require(TagReview.hash(engine,path)==expectedHash){"檔案已被修改，請重新掃描"}
             val staged=File(engine.context.cacheDir,"tag-${java.util.UUID.randomUUID()}.mp3")
             val source=if(content){(engine.context.contentResolver.openInputStream(Uri.parse(path))?:throw IOException("檔案權限已失效")).use{i->staged.outputStream().use{i.copyTo(it)}};staged}else File(path)
             val temp=File(source.parentFile,".${source.name}.edit-${java.util.UUID.randomUUID()}");val backup=File(source.parentFile,".${source.name}.backup-${java.util.UUID.randomUUID()}")
-            val tag=Id3.read(source);delta.forEach{(k,v)->tag.setText(if(k=="TYER"&&tag.version==4)"TDRC"else k,v)};raw.forEach{(k,v)->tag.setRaw(k,v)}
+            val tag=Id3.read(source);delta.forEach{(k,v)->tag.setText(if(k=="TYER"&&tag.version==4)"TDRC"else if(k=="TDOR"&&tag.version==3)"TORY"else k,if(k=="TDOR"&&tag.version==3)v.take(4)else v)};raw.forEach{(k,v)->tag.setRaw(k,v)}
             if(removeCover)tag.covers(emptyList());if(cover!=null)tag.covers(listOf(Art(cover,when { cover.size>=2 && cover[0]==0xff.toByte() && cover[1]==0xd8.toByte()->"image/jpeg"; cover.size>=12 && String(cover,8,4)=="WEBP"->"image/webp"; else->"image/png" },if(automaticCover)"Album front"else"User cover",3)))
             var destination=path
             try {
