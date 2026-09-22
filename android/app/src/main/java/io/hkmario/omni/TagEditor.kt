@@ -20,7 +20,7 @@ class TagEditor(private val engine:Engine) {
             val source=if(content){(engine.context.contentResolver.openInputStream(Uri.parse(path))?:throw IOException("檔案權限已失效")).use{i->staged.outputStream().use{i.copyTo(it)}};staged}else File(path)
             val temp=File(source.parentFile,".${source.name}.edit-${java.util.UUID.randomUUID()}");val backup=File(source.parentFile,".${source.name}.backup-${java.util.UUID.randomUUID()}")
             val tag=Id3.read(source);delta.forEach{(k,v)->tag.setText(if(k=="TYER"&&tag.version==4)"TDRC"else k,v)};raw.forEach{(k,v)->tag.setRaw(k,v)}
-            if(removeCover)tag.covers(emptyList());if(cover!=null)tag.covers(listOf(Art(cover,if(cover[0]==0xff.toByte())"image/jpeg"else"image/png",if(automaticCover)"Album front"else"User cover",3)))
+            if(removeCover)tag.covers(emptyList());if(cover!=null)tag.covers(listOf(Art(cover,when { cover.size>=2 && cover[0]==0xff.toByte() && cover[1]==0xd8.toByte()->"image/jpeg"; cover.size>=12 && String(cover,8,4)=="WEBP"->"image/webp"; else->"image/png" },if(automaticCover)"Album front"else"User cover",3)))
             var destination=path
             try {
                 tag.write(source,temp)

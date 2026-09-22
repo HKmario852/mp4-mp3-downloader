@@ -3,24 +3,24 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 namespace Omni.Core;
 
-public enum MusicLookupState { Matched, MatchedNoCover, NoMatch, Ambiguous, Unavailable }
-public sealed record MusicLookup(MusicLookupState State, string? Title = null, string? Artist = null, string? Album = null, Cover? Cover = null)
+public enum MusicLookupState { Matched, MatchedNoCover, NoMatch, Ambiguous, Unavailable, SetupRequired }
+public sealed record MusicLookup(MusicLookupState State, string? Title = null, string? Artist = null, string? Album = null, Cover? Cover = null, MusicCandidate[]? Choices = null, Dictionary<string,string>? Tags = null, string? Detail = null)
 {
-    public string Message => State switch {
+    public string Message => Detail ?? (State switch {
         MusicLookupState.Matched => "MusicBrainz：已配對，已取得專輯封面",
         MusicLookupState.MatchedNoCover => "MusicBrainz：已配對標籤，未取得專輯封面",
         MusicLookupState.Ambiguous => "MusicBrainz：有多個可能結果，已保留來源資料",
         MusicLookupState.Unavailable => "MusicBrainz：服務暫時無法使用，已保留來源資料",
         _ => "MusicBrainz：查無可靠配對，已保留來源資料"
-    };
+    });
 }
 public sealed record MusicQuery(string Title, string Artist, double? Duration);
-public sealed class MusicMetadata
+public sealed partial class MusicMetadata
 {
     static readonly HttpClient Http = new(new SocketsHttpHandler { MaxConnectionsPerServer = 5 }) { Timeout = TimeSpan.FromSeconds(20) };
     static readonly SemaphoreSlim Pool = new(5), Rate = new(1); static DateTimeOffset next;
     readonly HttpClient client;
-    static MusicMetadata() => Http.DefaultRequestHeaders.UserAgent.ParseAdd("MP4MP3Downloader/0.1.3 (https://github.com/HKmario852)");
+    static MusicMetadata() => Http.DefaultRequestHeaders.UserAgent.ParseAdd("MP4MP3Downloader/0.2.4 (https://github.com/HKmario852)");
     public MusicMetadata(HttpClient? client = null) => this.client = client ?? Http;
     public static MusicQuery Prepare(string title, string artist, double? duration)
     {
@@ -41,6 +41,7 @@ public sealed class MusicMetadata
         return Array(root, "recordings").Where(r => {
             if (Normalize(Text(r, "title")) != Normalize(query.Title)) return false;
             var artists = Artists(r); if (artists.Length == 0) return false;
+            if(query.Duration is >0&&Number(r,"length") is double length&&Math.Abs(length/1000-query.Duration.Value)>Math.Max(8,query.Duration.Value*.04))return false;
             if (query.Artist.Length > 0) return artists.Any(a => Normalize(a) == Normalize(query.Artist)) || Normalize(string.Join(" & ", artists)) == Normalize(query.Artist);
             // Title-only searches need duration as additional evidence; a single search hit alone is insufficient.
             return (Number(r,"score") ?? 0) >= 95 && query.Duration is > 0 && Number(r,"length") is double ms && Math.Abs(ms / 1000 - query.Duration.Value) <= Math.Max(8, query.Duration.Value * .04);
@@ -73,8 +74,10 @@ public sealed class MusicMetadata
             var query = Prepare(title,artist,duration);
             using var doc = JsonDocument.Parse(await Search(query,token));
             var matches = Candidates(doc.RootElement,query);
+            if(matches.Length==0&&query.Artist.Length>0){query=query with{Artist=""};using var fallback=JsonDocument.Parse(await Search(query,token));matches=Candidates(fallback.RootElement,query).Select(r=>r.Clone()).ToArray();}
             if (matches.Length == 0) return new(MusicLookupState.NoMatch);
-            if (matches.Select(r => Normalize(string.Join(" & ",Artists(r)))).Distinct().Count() != 1) return new(MusicLookupState.Ambiguous);
+            if (matches.Select(r => Normalize(string.Join(" & ",Artists(r)))).Distinct().Count() != 1) return new(MusicLookupState.Ambiguous,Choices:ToChoices(matches));
+            var versions=ToChoices(matches);if(versions.Length>0){if(versions.Length>1)return new(MusicLookupState.Ambiguous,Choices:versions);return await Recording(versions[0].RecordingId,versions[0].ReleaseId,token);}
             var match = matches[0]; var matchTitle = Text(match,"title"); var matchArtist = string.Join(" & ",Artists(match));
             // Recordings may have several releases; a missing first release cover must not stop the search.
             var releases = matches.SelectMany(r => Array(r,"releases")).Where(r => Text(r,"status") is "" or "Official")

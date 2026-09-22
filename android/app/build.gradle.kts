@@ -2,7 +2,9 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
     namespace = "io.hkmario.omni"
     compileSdk = 35
-    defaultConfig { applicationId = "io.hkmario.omni"; minSdk = 26; targetSdk = 35; versionCode = 9; versionName = "0.2.3"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
+    ndkVersion = "27.0.12077973"
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
+    defaultConfig { applicationId = "io.hkmario.omni"; minSdk = 26; targetSdk = 35; versionCode = 10; versionName = "0.2.4"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

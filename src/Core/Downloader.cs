@@ -11,6 +11,8 @@ public sealed partial class Downloader : IAsyncDisposable
     readonly CancellationTokenSource lifetime = new(); readonly Task loop; readonly MusicMetadata music = new();
     public Preferences Settings { get; private set; }
     public event Action<string>? Notify;
+    public Func<MusicCandidate[],CancellationToken,Task<MusicCandidate?>>? ResolveMusic {get;set;}
+    public string FfmpegPath=>Path.Combine(binaryDir,"ffmpeg.exe");
     public event Action<DownloadJob>? ChoiceRequested;
     public Func<string, Task<bool>>? RetryCover;
     public Func<byte[], string, Task>? WriteExternalCover;
@@ -116,7 +118,9 @@ public sealed partial class Downloader : IAsyncDisposable
                 var covers = new List<Cover>();
                 if (Settings.MusicBrainz) {
                     j.MetadataStatus = "MusicBrainz：正在查詢歌曲及專輯封面…"; store.Save(j);
-                    var metadata = await music.Lookup(j.Title, j.Artist, j.Duration, ct);
+                    var metadata = await music.Recognize(j.Title,j.Artist,j.Duration,file,FfmpegPath,Settings.AcoustIdClientKey,ct);
+                    if(metadata.State==MusicLookupState.Ambiguous&&metadata.Choices is {Length:>0} choices&&ResolveMusic is not null){var chosen=await ResolveMusic(choices,ct);if(chosen is not null)try{metadata=await music.Recording(chosen.RecordingId,chosen.ReleaseId,ct);}catch(Exception e)when(!ct.IsCancellationRequested&&e is HttpRequestException or IOException or System.Text.Json.JsonException or OperationCanceledException){metadata=new(MusicLookupState.Unavailable);}}
+                    if(!j.IsUserEdited&&options.KeepMetadata&&metadata.Tags is not null)foreach(var tag in metadata.Tags)doc.SetText(tag.Key=="TYER"&&doc.Version==4?"TDRC":tag.Key,tag.Value);
                     j.MetadataStatus = metadata.Message; j.MetadataCheckedAt = DateTimeOffset.UtcNow;
                     if (!j.IsUserEdited) { if (metadata.Title is { Length: > 0 }) j.Title = metadata.Title; if (metadata.Artist is { Length: > 0 }) j.Artist = metadata.Artist; if (metadata.Album is { Length: > 0 }) j.Album = metadata.Album; }
                     if (metadata.Cover is not null) covers.Add(metadata.Cover);

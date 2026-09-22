@@ -23,6 +23,7 @@ class Engine(val context: Context) {
     val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val mutable=MutableStateFlow(db.tasks().map{if(it.state in listOf(State.Queued,State.Analyzing,State.Downloading,State.Processing,State.RetryWait))it.copy(state=State.Paused,speed=0.0,eta=0)else it})
     val tasks=mutable.asStateFlow();val groups=MutableStateFlow(db.groups());val ready=CompletableDeferred<Unit>();val initError=MutableStateFlow<String?>(null)
+    val musicQuestions=MutableStateFlow<List<MusicQuestion>>(emptyList())
     val duplicateQuestions=MutableStateFlow<List<DuplicateQuestion>>(emptyList())
     val completionEvents=kotlinx.coroutines.flow.MutableSharedFlow<TaskItem>(extraBufferCapacity=10)
     private var lastRate:Int?=null;private val networkPaused=mutableSetOf<String>();private var wasBusy=false
@@ -77,7 +78,7 @@ class Engine(val context: Context) {
             val file=work.listFiles()?.firstOrNull{it.name=="media.${task.extension}"} ?: error("找不到下載輸出檔案")
             if(task.extension=="mp3") {
                 val tag=Id3.read(file);val arts=mutableListOf<Art>()
-                if(prefs.value.musicBrainz){update(id){it.copy(metadataStatus="MusicBrainz：正在查詢歌曲及專輯封面…")};val result=Metadata.lookup(task.title,task.artist,info.optDouble("duration").takeIf{it.isFinite()&&it>0});update(id){it.copy(metadataStatus=result.status,title=if(it.isUserEdited)it.title else result.title?:it.title,artist=if(it.isUserEdited)it.artist else result.artist?:it.artist,album=if(it.isUserEdited)it.album else result.album?:it.album)};result.cover?.let(arts::add)}else update(id){it.copy(metadataStatus="MusicBrainz：已在設定關閉")}
+                if(prefs.value.musicBrainz){update(id){it.copy(metadataStatus="MusicBrainz：正在查詢歌曲及專輯封面…")};var result=MusicRecognition.recognize(context,file.absolutePath,prefs.value.acoustIdClientKey,task.title,task.artist,info.optDouble("duration").takeIf{it.isFinite()&&it>0});if(result.choices.isNotEmpty()){val question=MusicQuestion(result.choices);musicQuestions.value=musicQuestions.value+question;try{question.answer.await()?.let{try{result=MusicRecognition.recording(it.recordingId,it.releaseId)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(_:Exception){result=MusicResult("MusicBrainz：服務暫時無法使用，已保留來源資料")}}}finally{musicQuestions.value=musicQuestions.value-question}};if(!task.isUserEdited&&prefs.value.keepMetadata)result.tags.forEach{(key,value)->tag.setText(if(key=="TYER"&&tag.version==4)"TDRC"else key,value)};update(id){it.copy(metadataStatus=result.status,title=if(it.isUserEdited)it.title else result.title?:it.title,artist=if(it.isUserEdited)it.artist else result.artist?:it.artist,album=if(it.isUserEdited)it.album else result.album?:it.album)};result.cover?.let(arts::add)}else update(id){it.copy(metadataStatus="MusicBrainz：已在設定關閉")}
                 task=get(id);if(prefs.value.keepMetadata){tag.setText("TIT2",task.title);tag.setText("TPE1",task.artist);tag.setText("TALB",task.album)}
                 arts.removeAll{!AlbumArtwork.accept(it.bytes)}
                 findSourceArtwork(task.url,info)?.let{source->for(i in arts.indices)arts[i]=arts[i].copy(type=0);arts.add(0,source)}

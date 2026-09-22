@@ -103,6 +103,8 @@ class MainActivity:ComponentActivity() {
         }
     }
     nextPage?.let{target->AlertDialog(onDismissRequest={nextPage=null},title={Text(text(prefs,"未儲存變更","Unsaved changes"))},text={Text(text(prefs,"離開並捨棄未儲存變更？","Leave and discard unsaved changes?"))},confirmButton={TextButton(onClick={settingsDirty=false;tagsDirty=false;nextPage=null;pageFlow.value=target}){Text(text(prefs,"離開","Leave"))}},dismissButton={TextButton(onClick={nextPage=null}){Text(text(prefs,"返回","Back"))}})}
+    val musicQuestions by engine.musicQuestions.collectAsStateWithLifecycle()
+    musicQuestions.firstOrNull()?.let{q->MusicChoiceDialog(q.choices,{q.answer.complete(it)},{q.answer.complete(null)})}
     val duplicates by engine.duplicateQuestions.collectAsStateWithLifecycle()
     duplicates.firstOrNull()?.let{q->AlertDialog(onDismissRequest={},title={Text(text(prefs,"檔案已存在","File already exists"))},text={Text(q.name)},confirmButton={TextButton(onClick={q.answer.complete("rename")}){Text(text(prefs,"自動重新命名","Auto rename"))}},dismissButton={Row{TextButton(onClick={q.answer.complete("overwrite")}){Text(text(prefs,"覆蓋","Overwrite"))};TextButton(onClick={q.answer.complete("skip")}){Text(text(prefs,"跳過","Skip"))}}})}
     tasks.firstOrNull{it.state==State.PendingChoice}?.let{task->AlertDialog(onDismissRequest={},title={Text(uiText("選擇下載範圍","Choose download scope"))},text={Text(uiText("此連結同時包含影片同播放清單。選擇前不會開始下載。","This link includes a video and playlist. Downloading waits for your choice."))},confirmButton={TextButton(onClick={engine.choose(task.id,true);start()}){Text(uiText("整個播放清單","Entire playlist"))}},dismissButton={TextButton(onClick={engine.choose(task.id,false);start()}){Text(uiText("僅此影片","This video only"))}})}

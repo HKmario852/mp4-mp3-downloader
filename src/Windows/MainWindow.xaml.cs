@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     public MainWindow(Downloader engine, Store store)
     {
         this.engine = engine; this.store = store; InitializeComponent(); UiKit.Apply(this,engine.Settings); SetMode(engine.Settings.DefaultType=="audio"?DownloadMode.Mp3:DownloadMode.Mp4);
+        engine.ResolveMusic=(choices,ct)=>Dispatcher.InvokeAsync(async()=>{Reveal();return await new MusicMatchWindow(this,choices).Ask(ct);}).Task.Unwrap();
         engine.NetworkPermitted=DesktopIntegration.NetworkAllowed;engine.ResolveDuplicate=ResolveDuplicate;engine.Completed+=j=>Dispatcher.BeginInvoke(()=>DesktopIntegration.Completion(j,engine.Settings));
         Microsoft.Win32.SystemEvents.UserPreferenceChanged+=SystemThemeChanged;Closed+=(_,_)=>Microsoft.Win32.SystemEvents.UserPreferenceChanged-=SystemThemeChanged;
         engine.WriteExternalCover = (bytes, path) => Dispatcher.InvokeAsync(() => CoverIO.Write(bytes, path, this)).Task.Unwrap();

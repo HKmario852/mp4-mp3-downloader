@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -15,7 +15,7 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
+        if (args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
@@ -38,12 +38,19 @@ public static class Program
             {
                 await app.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 Capture(window, Path.Combine(output, "windows-empty.png"));
+                if(args.Contains("--recording-smoke")){
+                    var result=await new MusicMetadata().Recording("cb39b5d8-ebb8-4bad-9f17-9d952108ecb7","885b1ba8-65f0-476b-939c-704db7a696de",CancellationToken.None);
+                    File.WriteAllText(Path.Combine(output,"recording-live.json"),Json.Encode(new{result.State,result.Title,result.Artist,result.Album,result.Tags,coverBytes=result.Cover?.Bytes.Length,dimensions=result.Cover is null?null:(object)AlbumArtwork.Dimensions(result.Cover.Bytes)}));
+                    if(result.Cover is not null)File.WriteAllBytes(Path.Combine(output,"reference-album-cover"+(result.Cover.Mime=="image/png"?".png":".jpg")),result.Cover.Bytes);
+                    await engine.DisposeAsync();window.Close();app.Shutdown(result.Title=="ENDROLL -HaThA-"?0:3);return;
+                }
                 if (args.Contains("--music-smoke")) {
                     var result=await new MusicMetadata().Lookup("Radiohead - Creep (Official Music Video)","",238,CancellationToken.None);
                     File.WriteAllText(Path.Combine(output,"musicbrainz-live.json"),Json.Encode(new{result.State,result.Title,result.Artist,result.Album,coverBytes=result.Cover?.Bytes.Length}));
                     if(result.Cover is not null) { var source=Path.Combine(output,"cover-test.mp3");await ProcessRunner.Run(Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),["-y","-f","lavfi","-i","sine=frequency=440:duration=2",source],null,CancellationToken.None);var doc=Id3Document.Read(source);doc.SetText("TIT2",result.Title!);doc.SetCovers([result.Cover,new(File.ReadAllBytes(Path.Combine(Environment.CurrentDirectory,"src/Windows/Assets/brand.png")),"image/png","Test secondary",0)]);await doc.Write(source,Path.Combine(output,"dual-cover-test.mp3"));var read=Id3Document.Read(Path.Combine(output,"dual-cover-test.mp3"));if(read.Frames.Count(f=>f.Id=="APIC")!=2)throw new Exception("Dual cover embedding failed"); }
                     await engine.DisposeAsync();window.Close();app.Shutdown(result.State==MusicLookupState.Matched?0:3);return;
                 }
+                if(args.Contains("--v24-regression")){await CheckV21(window,engine,store,app,output);await CheckV24(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if (args.Contains("--v21-regression")) { await CheckV21(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--v2-regression")) { await CheckV2(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--update-regression")) { await CheckUpdate(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
@@ -91,6 +98,30 @@ public static class Program
         window.OpenHistory();await Idle();var equal=Descendants(host).OfType<System.Windows.Controls.Primitives.UniformGrid>().First(g=>g.Columns==4);Check(equal.Children.OfType<FrameworkElement>().Select(c=>Math.Round(c.ActualWidth,1)).Distinct().Count()==1,"Summary cards must be equal width");
         var libraryTable=Descendants(host).OfType<DataGrid>().Single();libraryTable.SelectedItem=libraryTable.Items[0];await Idle();Check(libraryTable.Columns[0].Visibility==Visibility.Collapsed,"Single selection hides checkbox");libraryTable.SelectedItems.Add(libraryTable.Items[1]);await Idle();Check(libraryTable.Columns[0].Visibility==Visibility.Visible,"Multiple selection shows checkboxes");Check(libraryTable.Items.Cast<LibraryView.LibraryRow>().Count(r=>r.Checked)==2,"Row selection must select files for actions");Capture(window,Path.Combine(output,"library-equal-width.png"));
         File.WriteAllText(Path.Combine(output,"checks.json"),Json.Encode(new{passed=true,checks=new[]{"embedded tag editor","invalid title guard","actual tag save","filename preserved","full-width settings","125 percent text and 110 percent UI","settings returns to original editor","select all and clear","conditional checkboxes","equal-width summary","song scrollbar drag","library row selection","fixed long-title width","settings revert is clean"}}));
+    }
+    static async Task CheckV24(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output){
+        void Check(bool ok,string message){if(!ok)throw new Exception(message);}
+        ((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        var editor=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;
+        for(int i=0;i<100&&editor.Busy;i++)await Task.Delay(30);
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        await (Task)typeof(TagEditorView).GetMethod("SelectSongs",flags)!.Invoke(editor,new object[]{new[]{"music-a","music-b"}})!;
+        var pixel=BitmapSource.Create(475,500,96,96,PixelFormats.Bgra32,null,Enumerable.Repeat((byte)128,475*500*4).ToArray(),475*4);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(pixel));using var encoded=new MemoryStream();encoder.Save(encoded);var png=encoded.ToArray();var artPath=Path.Combine(output,"album-cover.png");File.WriteAllBytes(artPath,png);
+        var read=typeof(TagEditorView).GetMethod("ReadCoverData",flags)!;
+        read.Invoke(editor,new object[]{new System.Windows.DataObject(DataFormats.FileDrop,new[]{artPath})});Check(editor.Dirty,"File artwork must create unsaved preview");Check(!Id3Document.Read(store.Load().Single(j=>j.Id=="music-a").FilePath!).GetCovers().Any(),"Preview must not write before save");
+        read.Invoke(editor,new object[]{new System.Windows.DataObject("PNG",new MemoryStream(png))});Check(editor.Dirty,"PNG clipboard format must preview");
+        read.Invoke(editor,new object[]{new System.Windows.DataObject(DataFormats.Bitmap,pixel)});Check(editor.Dirty,"Bitmap clipboard format must preview");
+        Check(Descendants(editor).OfType<Grid>().Any(g=>g.AllowDrop&&g.Width==220),"Artwork drop target missing");
+        await (Task)typeof(TagEditorView).GetMethod("Save",flags)!.Invoke(editor,null)!;
+        foreach(var id in new[]{"music-a","music-b"}){var song=store.Load().Single(j=>j.Id==id);Check(song.CoverUserEdited,"Manual artwork protection not saved");Check(Id3Document.Read(song.FilePath!).GetCovers().Count==1,"Batch artwork not embedded");}
+        Capture(window,Path.Combine(output,"tag-cover-paste.png"));
+        var service=new MusicMetadata(new System.Net.Http.HttpClient(new FingerprintHandler()));var audio=store.Load().Single(j=>j.Id=="music-a").FilePath!;
+        var fpAudio=Path.Combine(output,"fingerprint-fixture.mp3");await ProcessRunner.Run(engine.FfmpegPath,["-y","-f","lavfi","-i","sine=frequency=440:duration=20","-codec:a","libmp3lame",fpAudio],null,CancellationToken.None);
+        var result=await service.Scan(fpAudio,engine.FfmpegPath,"test-application-key",null,CancellationToken.None);Check(result.State==MusicLookupState.NoMatch,"Fingerprint request pipeline failed");
+        File.WriteAllText(Path.Combine(output,"v24-checks.json"),Json.Encode(new{passed=true,checks=new[]{"file-drop preview","PNG clipboard representation","bitmap clipboard representation","multi-file cover save","manual cover protection","local FFmpeg Chromaprint and mocked AcoustID post"}}));
+    }
+    sealed class FingerprintHandler:System.Net.Http.HttpMessageHandler{
+        protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken ct){var body=await request.Content!.ReadAsStringAsync(ct);if(request.Method!=System.Net.Http.HttpMethod.Post||!body.Contains("fingerprint=")||!body.Contains("duration=20")||body.Contains(".mp3"))throw new Exception("Invalid fingerprint POST");return new(System.Net.HttpStatusCode.OK){Content=new System.Net.Http.StringContent("{\"status\":\"ok\",\"results\":[]}")};}
     }
     static async Task CheckV2(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output) {
         void Check(bool ok,string error){if(!ok)throw new Exception(error);}

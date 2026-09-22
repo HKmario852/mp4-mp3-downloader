@@ -1,4 +1,4 @@
-最新版本：[0.2.3](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.3) · [更新內容](docs/RELEASE-0.2.3.md)
+最新版本：[0.2.4](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.4) · [更新內容](docs/RELEASE-0.2.4.md)
 
 最新版本：[0.2.2](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.2) · [更新內容](docs/RELEASE-0.2.2.md)
 
@@ -48,7 +48,7 @@ dotnet test tests/Core.Tests/Core.Tests.csproj
 - 擴充功能以目前分頁的影片及清單識別核對請求，避免 YouTube SPA 舊網址或 index/t 參數變動誤報頁面已切換；Cookie 傳送前再次確認。
 - 支援 /playlist 頁面掛載。私人清單需登入有存取權的 YouTube 帳戶，並在擴充功能設定同意傳送至本機；手動貼上網址與 URI 後備不帶 Cookie。
 - 「移除」可移除暫停、失敗、待選擇及進行中的任務，清理其工作暫存，排除完成項目。
-- MP3 預設以來源影片縮圖作第一封面；MusicBrainz 圖作第二封面，縮圖不可取得時才以專輯图後備。既有 MP3 不會被自動重寫。
+- MP3 只接受近正方形封面，依來源圖片、YouTube Music 及 MusicBrainz 可靠配對查找，不裁切或拉伸長方形縮圖。既有 MP3 不會被自動重寫。
 - 設定預填正式 GitHub 倉庫；更新版本比較使用實際 App 版本。
 
 ## 0.1.3 歷史、刪除與音樂資料
@@ -95,7 +95,7 @@ Cookie 只走 Native Messaging / current-user Named Pipe。綠色勾號表示主
 - MP4 品質最高 4K / 最佳（同樣限制 4K），MP3 128/192/256/320 kbps。
 - 已下載的多關鍵字 AND 搜尋，篩選結果快照清空，保留實體檔案。
 - MP3 批次 ID3 編輯：未修改欄位保留、Track 固定填值、空字串保留 Frame、Title 即時驗證及重新命名。
-- MusicBrainz 預設關閉；開啟後精確比對歌曲/歌手，Cover Art Archive 封面 + 影片縮圖 APIC。
+- MusicBrainz 預設關閉；開啟後可靠配對歌曲與專輯版本，取得 Cover Art Archive 封面。Scan 需自行提供 AcoustID application key；參閱 [辨識設定](docs/MUSIC-RECOGNITION.md)。
 - Windows 系統匣、Toast；Android 通知背景暫停/取消、Wi-Fi 工作階段授權、SAF 未知容量確認。
 - Android 初始儲存於 App 外部音樂資料夾，解除安裝會刪除；建議使用「選擇資料夾」儲存到共用 SAF 目錄。
 - 原始碼與發布資產位於公開 GitHub 倉庫 `HKmario852/mp4-mp3-downloader`；App 更新不需 GitHub 登入。

@@ -14,6 +14,7 @@ public sealed partial class Preferences
     public int AudioKbps { get; set; } = 320;
     public bool CleanTitle { get; set; } = true;
     public bool MusicBrainz { get; set; }
+    public string AcoustIdClientKey { get; set; } = "";
     public bool WifiOnly { get; set; } = true;
     public string DownloadDirectory { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "Omni");
     public string? Mp4Directory { get; set; }

@@ -23,3 +23,9 @@
 - Android 的 youtubedl-android 與相依版本見 android/app/build.gradle.kts；上游 Gradle / FFmpeg 建置腳本位於前述專案。
 
 本 App 原始碼與建置腳本可在同一 Releases 的原始碼包下載。
+
+## 0.2.4 音訊指紋
+
+- Android 本機 Chromaprint 1.5.1：[上游版本](https://github.com/acoustid/chromaprint/tree/v1.5.1)，MIT；內含 KissFFT（BSD-3-Clause）及 FFmpeg avresample（LGPL-2.1-or-later）。完整來源及版權聲明在 `android/app/src/main/cpp/vendor/chromaprint-1.5.1`，JNI 與 CMake 建置入口在相鄰目錄。Android NDK 27、CMake 3.22.1，建置四種 ABI。APK assets/licenses 保留授權聲明。
+- Windows 使用現有 GPL FFmpeg 的 Chromaprint muxer，無額外常駐服務。
+- [MusicBrainz Web Service](https://musicbrainz.org/doc/MusicBrainz_API) 用於公開中繼資料查詢；[AcoustID](https://acoustid.org/webservice) 用於指紋查詢，需使用應用程式 client key。此版本不附帶第三方應用程式或短期測試 key。

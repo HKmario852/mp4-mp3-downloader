@@ -13,3 +13,5 @@ The app stores preferences and download history locally. It does not upload your
 - Windows can move deleted files to Recycle Bin. Android uses the system trash flow where supported; other storage providers require explicit confirmation before permanent deletion.
 
 This is an open-source independent downloader, not a YouTube or MusicBrainz product.
+
+音訊 Scan：本機產生 Chromaprint 指紋，向 AcoustID 傳送指紋、歌曲長度及 application client key；不傳送原始音訊。公開 MusicBrainz 查詢傳送歌曲名、歌手或 MBID，無須登入帳號。
