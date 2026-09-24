@@ -13,7 +13,6 @@ class TagEditor(private val engine:Engine) {
     suspend fun apply(ids:Set<String>,delta:Map<String,String>,raw:Map<String,ByteArray>,cover:ByteArray?,removeCover:Boolean=false,renameFile:Boolean=true,automaticCover:Boolean=false,expectedHash:String?=null)=lock.withLock { withContext(Dispatchers.IO) {
         if(renameFile)delta["TIT2"]?.let{require(Rules.titleError(it)==null){Rules.titleError(it)!!}};require(raw.keys.none{it.substringBefore('#')=="TIT2"}){"請用 Title 欄位修改歌曲名"}
         if(renameFile&&!delta["TIT2"].isNullOrEmpty())ids.forEach{val t=engine.get(it);require(t.path?.startsWith("content://")!=true||t.directory.startsWith("content://")){"請先加入歌曲所在資料夾，取得重新命名授權"}}
-        val directories=linkedMapOf<String,String>()
         ids.forEach { id ->
             val task=engine.get(id);val path=task.path ?: throw IOException("找不到音訊檔案");val content=path.startsWith("content://");if(expectedHash!=null)require(TagReview.hash(engine,path)==expectedHash){"檔案已被修改，請重新掃描"}
             val staged=File(engine.context.cacheDir,"tag-${java.util.UUID.randomUUID()}.mp3")
@@ -41,10 +40,8 @@ class TagEditor(private val engine:Engine) {
                     try{if(destination!=path)java.nio.file.Files.move(source.toPath(),File(destination).toPath())}catch(e:Exception){backup.copyTo(source,true);throw e}
                 }
                 engine.update(id){it.copy(path=destination,title=if(delta.containsKey("TIT2"))delta.getValue("TIT2")else it.title,artist=if(delta.containsKey("TPE1"))delta.getValue("TPE1")else it.artist,album=if(delta.containsKey("TALB"))delta.getValue("TALB")else it.album,isUserEdited=it.isUserEdited||!automaticCover,coverUserEdited=it.coverUserEdited||(!automaticCover&&(cover!=null||removeCover||raw.keys.any{k->k.substringBefore('#')=="APIC"})))}
-                if(cover!=null)directories[if(content)task.directory else File(destination).parent!!]=destination
                 backup.delete();engine.storage.scan(File(destination))
             } finally{temp.delete();if(content)staged.delete()}
         }
-        if(cover!=null){val jpeg=Engine.toJpeg(cover);var failed=0;directories.forEach{(parent,path)->try{engine.storage.coverFor(path,jpeg,parent)}catch(_:Exception){failed++}};if(failed>0)Notices.show(engine.context,"封面更新完成（含 $failed 個目錄寫入失敗）")}
     } }
 }

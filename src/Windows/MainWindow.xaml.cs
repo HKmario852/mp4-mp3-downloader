@@ -28,7 +28,6 @@ public partial class MainWindow : Window
         engine.ResolveMusic=(choices,ct)=>Dispatcher.InvokeAsync(async()=>{Reveal();return await new MusicMatchWindow(this,choices).Ask(ct);}).Task.Unwrap();
         engine.NetworkPermitted=DesktopIntegration.NetworkAllowed;engine.ResolveDuplicate=ResolveDuplicate;engine.Completed+=j=>Dispatcher.BeginInvoke(()=>DesktopIntegration.Completion(j,engine.Settings));
         Microsoft.Win32.SystemEvents.UserPreferenceChanged+=SystemThemeChanged;Closed+=(_,_)=>Microsoft.Win32.SystemEvents.UserPreferenceChanged-=SystemThemeChanged;
-        engine.WriteExternalCover = (bytes, path) => Dispatcher.InvokeAsync(() => CoverIO.Write(bytes, path, this)).Task.Unwrap();
         timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) }; timer.Tick += (_, _) => Refresh(); timer.Start();
         Closing += async (_, e) => { if (!AllowClose) { e.Cancel = true;if(reviewView is not null){reviewView.Back();return;}if(closePrompt||tagEditorView?.Busy==true)return;closePrompt=true;try{if(!await LeaveSettings())return;ShowDownloads();if(engine.Settings.CloseToTray){ShowInTaskbar=false;Hide();}else await ExitApplication();}finally{closePrompt=false;} } };
         SizeChanged += (_, _) => { DetailColumn.Width = new GridLength(ActualWidth < 1100 ? 320 : 380); };
@@ -220,7 +219,7 @@ public partial class MainWindow : Window
     void SystemThemeChanged(object sender,Microsoft.Win32.UserPreferenceChangedEventArgs e)=>Dispatcher.BeginInvoke(()=>UiKit.Apply(this,engine.Settings));
     async Task<string> ResolveDuplicate(string path,CancellationToken ct){return await Dispatcher.InvokeAsync(async()=>{Reveal();var dialog=Dialogs.Basic(this,UiKit.T("檔案已存在","File already exists"),510,300);var panel=new StackPanel{Margin=new Thickness(20)};panel.Children.Add(UiKit.Text(Path.GetFileName(path),18));var answer=new TaskCompletionSource<string>();foreach(var pair in new[]{("overwrite",UiKit.T("覆蓋","Overwrite")),("rename",UiKit.T("自動重新命名","Auto rename")),("skip",UiKit.T("跳過","Skip"))})panel.Children.Add(UiKit.Button(pair.Item2,()=>{answer.TrySetResult(pair.Item1);dialog.Close();}));dialog.Content=panel;dialog.Closed+=(_,_)=>answer.TrySetResult("skip");using var registration=ct.Register(()=>Dispatcher.BeginInvoke(()=>dialog.Close()));dialog.Show();return await answer.Task;}).Task.Unwrap();}
     void CollapseClick(object s, RoutedEventArgs e) { collapsed = !collapsed; UpdateNavigation(); }
-    void ApplyLanguage(){Localization.Apply(DownloadArea,UiKit.Language=="en");Localization.Apply(Details,UiKit.Language=="en");Localization.Apply(NavFooter,UiKit.Language=="en");}
+    void ApplyLanguage(){Localization.Apply(DownloadArea,UiKit.Language=="en");Localization.Apply(Details,UiKit.Language=="en");Localization.Apply(NavFooter,UiKit.Language=="en");UrlHint.Text=UiKit.T("貼上 YouTube 或其他影片網址…","Paste a YouTube or other video URL…");SearchHint.Text=UiKit.T("搜尋下載任務：標題、歌手、專輯、網址或檔名…","Search tasks by title, artist, album, URL or filename…");}
     void UpdateNavigation()
     {
         NavColumn.Width = new GridLength(settingsView is not null?0:collapsed ? 76 : 196); NavFooter.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;

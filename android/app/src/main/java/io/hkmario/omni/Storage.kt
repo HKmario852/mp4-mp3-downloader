@@ -51,10 +51,10 @@ class Storage(private val context: Context, private val grants: SessionGrants) {
         } finally { if(!committed){temp.delete();backup?.renameTo(name)} }
         }finally{publishMutex.unlock()}
     }
-    suspend fun sidecars(work:File,published:Published):Int=withContext(Dispatchers.IO) {
+    suspend fun sidecars(work:File,published:Published,audioOnly:Boolean=false):Int=withContext(Dispatchers.IO) {
         val name=if(published.path.startsWith("content://"))DocumentFile.fromSingleUri(context,Uri.parse(published.path))?.name?:"media" else File(published.path).name
         val stem=name.substringBeforeLast('.');var failures=0
-        work.listFiles()?.filter{it.name.startsWith("media.")&&it.extension in listOf("srt","vtt","jpg")}?.forEach{source->
+        work.listFiles()?.filter{it.name.startsWith("media.")&&it.extension in listOf("srt","vtt","jpg")&&(!audioOnly||it.extension!="jpg")}?.forEach{source->
             try {val targetName=stem+source.name.removePrefix("media")
                 if(published.parent.startsWith("content://")){val parent=TreeDocument(context,Uri.parse(published.parent));val uri=parent.find(targetName)?:parent.create(if(source.extension=="jpg")"image/jpeg"else"text/plain",targetName);context.contentResolver.openOutputStream(uri,"wt")!!.use{o->source.inputStream().use{it.copyTo(o)}}}
                 else copyFileVerified(source,File(published.parent,targetName))
@@ -75,22 +75,6 @@ class Storage(private val context: Context, private val grants: SessionGrants) {
     private fun copyFileVerified(source: File,target: File) { val temp=File(target.parentFile,".omni-${java.util.UUID.randomUUID()}.part");try{source.inputStream().use{i->temp.outputStream().use{o->i.copyTo(o);o.fd.sync()}};if(source.length()!=temp.length() || !digest(source).contentEquals(digest(temp)))throw IOException("搬移驗證失敗");java.nio.file.Files.move(temp.toPath(),target.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING)}finally{if(temp.exists())temp.delete()} }
     private fun digest(file: File): ByteArray { val md=MessageDigest.getInstance("SHA-256");file.inputStream().use{i->val b=ByteArray(65536);while(true){val n=i.read(b);if(n<0)break;md.update(b,0,n)}};return md.digest() }
     fun scan(file: File) { if(file.extension.equals("mp3",true) && file.canonicalPath.split(File.separator).none{it==".covers"}) MediaScannerConnection.scanFile(context,arrayOf(file.absolutePath),arrayOf("audio/mpeg"),null) }
-    suspend fun coverFor(path: String, jpeg: ByteArray, parent: String = "") = withContext(Dispatchers.IO) {
-        if(path.startsWith("content://")) {
-            if(!parent.startsWith("content://"))throw IOException("缺少儲存提供者父目錄，請重新選擇儲存路徑")
-            // Provider document IDs are opaque. Keep the actual parent URI at publication.
-            val parentDoc=TreeDocument(context,Uri.parse(parent))
-            val covers=parentDoc.find(".covers") ?: parentDoc.create("vnd.android.document/directory",".covers")
-            val child=TreeDocument(context,covers)
-            val noMedia=child.find(".nomedia") ?: child.create("application/octet-stream",".nomedia")
-            context.contentResolver.openOutputStream(noMedia,"wt")?.close()
-            val cover=child.find("cover.jpg") ?: child.create("image/jpeg","cover.jpg")
-            (context.contentResolver.openOutputStream(cover,"wt") ?: throw IOException("封面目錄寫入失敗")).use{it.write(jpeg)}
-        } else {
-            val dir=File(File(path).parentFile,".covers").apply{if(!exists()&&!mkdirs())throw IOException("無法建立封面目錄")}
-            File(dir,".nomedia").writeBytes(byteArrayOf());File(dir,"cover.jpg").writeBytes(jpeg)
-        }
-    }
 }
 class TreeDocument(private val context: Context,private val uri: Uri) {
     fun find(name: String): Uri? { val children=DocumentsContract.buildChildDocumentsUriUsingTree(uri,DocumentsContract.getDocumentId(uri));context.contentResolver.query(children,arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME),null,null,null)?.use{c->while(c.moveToNext())if(c.getString(1)==name)return DocumentsContract.buildDocumentUriUsingTree(uri,c.getString(0))};return null }

@@ -42,7 +42,7 @@ public sealed class DeferredMetadataTests
             var coverPath=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"../../../../../src/Windows/Assets/brand.png"));
             var handler=new ReplyHandler(File.ReadAllBytes(coverPath)){SearchStarted=new(),ContinueSearch=new()};using var http=new HttpClient(handler);await using var engine=new Downloader(store,dir,Path.Combine(dir,"work"),new MusicMetadata(http));
             await handler.SearchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));Assert.Equal(JobState.Completed,store.Load().Single().State);Assert.True(File.Exists(file));Assert.Equal([1,2,3,4],File.ReadAllBytes(file));
-            handler.ContinueSearch.TrySetResult();await WaitFinished(store,job.Id);var saved=store.Load().Single();Assert.False(saved.PendingMetadata);Assert.Equal(JobState.Completed,saved.State);Assert.Equal("Album",Id3Document.Read(file).Text("TALB"));Assert.Equal("Artist",Id3Document.Read(file).Text("TPE1"));Assert.Single(Id3Document.Read(file).GetCovers());Assert.False(saved.IsUserEdited);
+            handler.ContinueSearch.TrySetResult();await WaitFinished(store,job.Id);var saved=store.Load().Single();Assert.False(saved.PendingMetadata);Assert.Equal(JobState.Completed,saved.State);Assert.Equal("Album",Id3Document.Read(file).Text("TALB"));Assert.Equal("Artist",Id3Document.Read(file).Text("TPE1"));Assert.Single(Id3Document.Read(file).GetCovers());Assert.Empty(Directory.EnumerateFiles(dir,"*.jpg"));Assert.False(saved.IsUserEdited);
         }finally{SqliteConnection.ClearAllPools();Directory.Delete(dir,true);}
     }
     [Fact] public async Task LaterFileEditPreventsBackgroundOverwrite()

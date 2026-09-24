@@ -44,7 +44,7 @@ object MusicRecognition {
   if(key.isBlank())return MusicResult("Scan 尚未設定：請在「設定 → 格式」填入 AcoustID application API key。")
   progress(1);val fp=withTimeout(90000){AudioFingerprint.calculate(context,path)}
   progress(2);val root=rate.withLock{delay((next-System.currentTimeMillis()).coerceAtLeast(0));next=System.currentTimeMillis()+1000
-   withContext(Dispatchers.IO){val body=FormBody.Builder().add("client",key.trim()).add("duration",fp.duration.toString()).add("fingerprint",fp.fingerprint).add("meta","recordingids").add("format","json").build();http.newCall(Request.Builder().url("https://api.acoustid.org/v2/lookup").post(body).header("User-Agent","MP4MP3Downloader/0.2.6").build()).awaitResponse().use{r->check(r.isSuccessful){"AcoustID 服務無法使用"};JSONObject(r.body!!.string())}}
+   withContext(Dispatchers.IO){val body=FormBody.Builder().add("client",key.trim()).add("duration",fp.duration.toString()).add("fingerprint",fp.fingerprint).add("meta","recordingids").add("format","json").build();http.newCall(Request.Builder().url("https://api.acoustid.org/v2/lookup").post(body).header("User-Agent","MP4MP3Downloader/0.2.7").build()).awaitResponse().use{r->check(r.isSuccessful){"AcoustID 服務無法使用"};JSONObject(r.body!!.string())}}
   }
   check(root.optString("status")=="ok"){"AcoustID 查詢失敗，請檢查 application key"}
   progress(3)

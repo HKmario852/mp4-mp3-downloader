@@ -89,8 +89,7 @@ class Engine(val context: Context) {
             }
             val group=groups.value.firstOrNull{it.id==task.groupId}
             val finalBytes=file.length();val published=storage.publish(file,task.targetTree ?: prefs.value.treeFor(task.mode),Options.fileStem(task,prefs.value)+".${task.extension}",group?.let{Rules.safeName(it.title)},prefs.value.duplicateAction,{name->askDuplicate(name)}){askSpace(id)}
-            if(cover!=null&&prefs.value.keepThumbnail)try{storage.coverFor(published.path,toJpeg(cover!!.bytes),published.parent)}catch(_:Exception){Notices.show(context,"封面更新完成（含 1 個目錄寫入失敗）")}
-            update(id){it.copy(bytes=finalBytes,total=finalBytes,state=State.Completed,path=published.path,directory=published.parent,progress=100f,completedAt=System.currentTimeMillis())};if(task.groupId==null&&prefs.value.notifyComplete)Notices.show(context,"下載完成：${task.title}");completionEvents.tryEmit(get(id));playCompletionSound(context,prefs.value);val sideFailures=storage.sidecars(work,published);if(sideFailures>0)update(id){it.copy(error="Media saved; $sideFailures sidecars could not be saved")}
+            update(id){it.copy(bytes=finalBytes,total=finalBytes,state=State.Completed,path=published.path,directory=published.parent,progress=100f,completedAt=System.currentTimeMillis())};if(task.groupId==null&&prefs.value.notifyComplete)Notices.show(context,"下載完成：${task.title}");completionEvents.tryEmit(get(id));playCompletionSound(context,prefs.value);val sideFailures=storage.sidecars(work,published,task.mode=="mp3");if(sideFailures>0)update(id){it.copy(error="Media saved; $sideFailures sidecars could not be saved")}
         } catch(e:DuplicateSkipped){update(id){it.copy(state=State.Cancelled,error="Duplicate skipped")}} catch(e: CancellationException){if(get(id).state!=State.Cancelled)update(id){it.copy(state=State.Paused,speed=0.0,eta=0)}}
         catch(e: Exception){if(get(id).state !in listOf(State.Cancelled,State.Paused)){val raw=redact(e.message?:"未知錯誤");update(id){it.copy(state=State.Failed,error=diagnose(raw),stderr=raw.take(32000),speed=0.0,eta=0)};if(get(id).groupRoot){groups.value.firstOrNull{it.id==get(id).groupId}?.let{saveGroup(it.copy(discoveryComplete=true,discoveryFailures=it.discoveryFailures+1))}}else if(get(id).groupId==null&&prefs.value.notifyFailure)Notices.show(context,"下載失敗：${get(id).title}")}}
         finally {val t=get(id);if(t.state==State.Completed&&t.error==null||t.state==State.Cancelled||t.state==State.Failed&&prefs.value.cleanFailed)runCatching{cleanWork(t)}}
@@ -139,6 +138,5 @@ class Engine(val context: Context) {
     companion object {
         fun redact(s: String)=s.replace(Regex("https?://\\S+|(?i)(cookie|authorization|token)\\s*[:=].*"),"[已隱藏敏感資料]")
         fun diagnose(s: String)=if(s.contains("403")||s.contains("Sign in",true))"網站要求登入或拒絕存取。可於網絡設定匯入自己的 Cookie；如開啟 VPN，請檢查地區及出口連線。"else if(s.contains("space",true))"儲存空間不足，請釋放空間或選擇另一個目錄。"else "下載失敗，請檢查網路及影片可用性；原始診斷可匯出分享。"
-        fun toJpeg(bytes: ByteArray): ByteArray {val bitmap=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size)?:error("無效封面");val out=java.io.ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,95,out);bitmap.recycle();return out.toByteArray()}
     }
 }

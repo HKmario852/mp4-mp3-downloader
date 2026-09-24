@@ -18,7 +18,6 @@ public sealed partial class Downloader : IAsyncDisposable
     public string FfmpegPath=>Path.Combine(binaryDir,"ffmpeg.exe");
     public event Action<DownloadJob>? ChoiceRequested;
     public Func<string, Task<bool>>? RetryCover;
-    public Func<byte[], string, Task>? WriteExternalCover;
     public Downloader(Store store, string binaryDir, string workDir, MusicMetadata? musicService = null)
     {
         this.store = store; this.binaryDir = binaryDir; this.workDir = workDir; music=musicService??new(); System.IO.Directory.CreateDirectory(workDir);
@@ -146,7 +145,6 @@ public sealed partial class Downloader : IAsyncDisposable
 
                 var tagged = file + ".tagged"; if (File.Exists(tagged)) File.Delete(tagged); await doc.Write(file, tagged, ct); File.Move(tagged, file, true);
                 System.IO.Directory.CreateDirectory(j.Directory);
-                if (options.KeepThumbnail && covers.Count > 0 && WriteExternalCover is not null) await WriteExternalCover(covers[0].Bytes, Path.Combine(j.Directory, "cover.jpg"));
             }
             ct.ThrowIfCancellationRequested(); System.IO.Directory.CreateDirectory(j.Directory);
             if(j.Extension=="mp3"&&options.Mp3MetadataMode=="after") { j.PendingMetadata=true; deferredInfo[j.Id]=info; }

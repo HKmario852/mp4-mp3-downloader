@@ -29,6 +29,16 @@ public sealed class DownloadOptionsTests
         Assert.Equal("夜に駆ける",DownloadOptions.FileStem(j,new()));
         Assert.Equal("YOASOBI - 夜に駆ける",DownloadOptions.FileStem(j,new(){AudioNaming="{artist} - {title}"}));
     }
+    [Fact] public void Mp3KeepsArtworkInternalWhileVideoCanPublishThumbnail()
+    {
+        var p=new Preferences{KeepThumbnail=true,EmbedThumbnail=true};
+        var audio=new DownloadJob{Mode=DownloadMode.Mp3,OutputFormat="mp3"};
+        var video=new DownloadJob{Mode=DownloadMode.Mp4,OutputFormat="mp4"};
+        Assert.DoesNotContain("--write-thumbnail",DownloadOptions.Format(audio,p));
+        Assert.False(DownloadOptions.PublishSidecar(audio,"media.jpg"));
+        Assert.Contains("--write-thumbnail",DownloadOptions.Format(video,p));
+        Assert.True(DownloadOptions.PublishSidecar(video,"media.jpg"));
+    }
     [Fact] public async Task RenameCollisionPreservesBothFilesAndAllMatchingRecords()
     {
         var root=Path.Combine(Path.GetTempPath(),"omni-rename-test-"+Guid.NewGuid());Directory.CreateDirectory(root);

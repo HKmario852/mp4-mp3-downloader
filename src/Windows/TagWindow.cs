@@ -33,7 +33,7 @@ public sealed class TagWindow : Window
                 var rawFields = Json.Decode<Dictionary<string, string>>(raw.Text); if (rawFields.Keys.Any(k => k.Split('#')[0] == "TIT2")) throw new ArgumentException("請在 Title 欄位修改歌曲名，才能驗證檔名");
                 var covers = cover is null ? null : new List<Cover> { new(cover, cover.Length > 2 && cover[0] == 255 ? "image/jpeg" : "image/png", "User cover", 3) };
                 saving = true; save.IsEnabled = false; panel.IsEnabled = false; var changes = new Dictionary<string, string>(delta); await Task.Run(() => new TagEditor(store).Apply(jobs, new(changes, rawFields, covers)));
-                if (cover is not null) foreach (var dir in jobs.Select(j => Path.GetDirectoryName(j.FilePath!)!).Distinct(StringComparer.OrdinalIgnoreCase)) await CoverIO.Write(cover, Path.Combine(dir, "cover.jpg"), this);
+
                 saving = false; Close();
             }
             catch (Exception e) { error.Text = e.Message; }

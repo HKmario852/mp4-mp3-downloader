@@ -4,7 +4,7 @@ android {
     compileSdk = 35
     ndkVersion = "27.0.12077973"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
-    defaultConfig { applicationId = "io.hkmario.omni"; minSdk = 26; targetSdk = 35; versionCode = 12; versionName = "0.2.6"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
+    defaultConfig { applicationId = "io.hkmario.omni"; minSdk = 26; targetSdk = 35; versionCode = 13; versionName = "0.2.7"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

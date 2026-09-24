@@ -16,7 +16,7 @@ object Options {
  fun format(t:TaskItem,p:Prefs):List<Pair<String,String?>> {val a=mutableListOf<Pair<String,String?>>()
   if(t.mode=="mp3"){a.addAll(listOf("-f" to "bestaudio/best","-x" to null,"--audio-format" to t.extension));if(t.extension in listOf("mp3","m4a"))a.add("--audio-quality" to "${t.kbps}k");if(t.extension !in listOf("mp3","wav")&&p.embedThumbnail)a.add("--embed-thumbnail" to null)}
   else {val cap="[height<=?${if(t.height>0)t.height.coerceAtMost(2160)else 2160}]";val codec=when(p.videoCodec){"h264"->"[vcodec^=avc]";"h265"->"[vcodec^=hev]";"av1"->"[vcodec^=av01]";else->""};val f=if(t.extension=="webm")"bv$cap$codec[ext=webm]+ba[ext=webm]/b$cap$codec[ext=webm]"else if(t.extension=="mp4"&&p.videoCodec=="auto")"bv$cap[ext=mp4]+ba[ext=m4a]/b$cap[ext=mp4]/bv$cap+ba/b$cap"else"bv$cap$codec+ba/b$cap$codec";a.addAll(listOf("-f" to f,"--merge-output-format" to t.extension,"--remux-video" to t.extension));if(p.downloadSubtitles){a.addAll(listOf("--write-subs" to null,"--write-auto-subs" to null,"--sub-langs" to p.subtitleLanguages,"--sub-format" to "${p.subtitleFormat}/best","--convert-subs" to p.subtitleFormat));if(p.embedSubtitles)a.add("--embed-subs" to null)}}
-  if(p.keepMetadata)a.add("--embed-metadata" to null);if(p.keepThumbnail)a.addAll(listOf("--write-thumbnail" to null,"--convert-thumbnails" to "jpg"));return a
+  if(p.keepMetadata)a.add("--embed-metadata" to null);if(p.keepThumbnail&&t.mode!="mp3")a.addAll(listOf("--write-thumbnail" to null,"--convert-thumbnails" to "jpg"));return a
  }
  fun apply(r:YoutubeDLRequest,args:List<Pair<String,String?>>){args.forEach{(key,value)->if(value==null)r.addOption(key)else r.addOption(key,value)}}
 }

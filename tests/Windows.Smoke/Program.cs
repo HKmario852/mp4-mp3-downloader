@@ -15,16 +15,16 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
+        if (args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
                 var path=Path.Combine(output,id+"."+mode.ToString().ToLowerInvariant());
                 if(mode==DownloadMode.Mp3) ProcessRunner.Run(Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),["-y","-f","lavfi","-i","sine=frequency=440:duration=20","-codec:a","libmp3lame","-b:a","320k",path],null,CancellationToken.None).GetAwaiter().GetResult();
                 else File.WriteAllText(path,"selection fixture");
-                store.Save(new DownloadJob{Id=id,RequestId=id,Title=id,Mode=mode,State=JobState.Completed,FilePath=path,Url="https://example.org/"+id,Thumbnail=new Uri(Path.GetFullPath(Path.Combine(args[1],"..","..","src","Windows","Assets","brand.png"))).AbsoluteUri,TotalBytes=new FileInfo(path).Length,Artist="Mario",Duration=2,AudioKbps=320,CompletedAt=DateTimeOffset.UtcNow});
+                store.Save(new DownloadJob{Id=id,RequestId=id,Title=id,Mode=mode,State=JobState.Completed,FilePath=path,Url="https://example.org/"+id,Thumbnail=new Uri(Path.GetFullPath(Path.Combine(args[1],"..","..","src","Windows","Assets","brand.png"))).AbsoluteUri,TotalBytes=new FileInfo(path).Length,Artist="Mario",Duration=2,AudioKbps=320,CompletedAt=DateTimeOffset.UtcNow.AddMinutes(args.Contains("--v27-regression")&&id=="music-a"?-10:0)});
             }
-            var p=store.Preferences();p.Mp3Directory=Path.Combine(output,"music");p.Mp4Directory=Path.Combine(output,"video");store.SavePreferences(p);
+            var p=store.Preferences();p.Mp3Directory=Path.Combine(output,"music");p.Mp4Directory=Path.Combine(output,"video");if(args.Contains("--v27-regression"))p.Language="en";store.SavePreferences(p);
         }
         if (args.Contains("--update-regression")) { store.Save(new DownloadJob{Id="paused",Title="暫停測試",State=JobState.Paused}); store.Save(new DownloadJob{Id="failed",Title="失敗測試",State=JobState.Failed}); }
         var engine = new Downloader(store, Path.GetFullPath(args[1]), Path.Combine(output, "smoke-work"));
@@ -52,6 +52,7 @@ public static class Program
                 }
                 if(args.Contains("--live-scan")){var result=await new MusicMetadata().Scan(args[3],Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),AcoustIdClient.Resolve(""),null,CancellationToken.None,true);File.WriteAllText(Path.Combine(output,"live-scan.json"),Json.Encode(new{result.State,result.Choices}));await engine.DisposeAsync();window.Close();app.Shutdown(result.Choices?.Length>0?0:3);return;}
                 if(args.Contains("--review-regression")){await CheckReview(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
+                if(args.Contains("--v27-regression")){await CheckV27(window,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v26-regression")){await CheckV26(window,engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--cache-regression")){await CheckCache(engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v24-regression")){await CheckV21(window,engine,store,app,output);await CheckV24(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
@@ -74,6 +75,29 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckV27(MainWindow window,System.Windows.Application app,string output)
+    {
+        void Check(bool value,string message){if(!value)throw new Exception(message);}
+        var search=(TextBox)window.FindName("SearchBox");var searchHint=(TextBlock)window.FindName("SearchHint");
+        var urlHint=(TextBlock)window.FindName("UrlHint");
+        Check(searchHint.Text.StartsWith("Search tasks",StringComparison.Ordinal),"Downloading search hint did not switch to English");
+        Check(urlHint.Text.StartsWith("Paste a YouTube",StringComparison.Ordinal),"URL hint did not switch to English");
+        window.UpdateLayout();
+        var hintY=searchHint.TranslatePoint(new Point(0,searchHint.ActualHeight/2),window).Y;
+        search.Text="x";window.UpdateLayout();
+        var caret=search.GetRectFromCharacterIndex(0);var caretY=search.TranslatePoint(new Point(0,caret.Y+caret.Height/2),window).Y;
+        Check(Math.Abs(hintY-caretY)<4,$"Search hint and caret are on different lines ({hintY:F1}, {caretY:F1})");
+        search.Text="";Capture(window,Path.Combine(output,"windows-english-search.png"));
+        ((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        var editor=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;
+        for(var i=0;i<100&&editor.Busy;i++)await Task.Delay(30);
+        var songs=(StackPanel)typeof(TagEditorView).GetField("songList",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!.GetValue(editor)!;
+        var first=Descendants((Border)songs.Children[0]).OfType<TextBlock>().First().Text;
+        Check(first=="music-b",$"Tag editor order should be newest first, found {first}");
+        Capture(window,Path.Combine(output,"windows-tags-newest-first.png"));
+        File.WriteAllText(Path.Combine(output,"v27-checks.json"),Json.Encode(new{passed=true,first,searchHint=searchHint.Text,urlHint=urlHint.Text,baselineDifference=Math.Abs(hintY-caretY)}));
     }
     static async Task CheckV26(MainWindow window,Downloader engine,string output)
     {
@@ -134,6 +158,7 @@ public static class Program
         async Task Idle()=>await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
         window.Width=1580;window.Height=980;window.OpenHistory();await Idle();Capture(window,Path.Combine(output,"library-icons.png"));
         Click("TagsNav");await Idle();var host=(ContentControl)window.FindName("PageHost");Check(host.Content is TagEditorView,"Tag page missing");var editor=(TagEditorView)host.Content;for(int i=0;i<100&&editor.Busy;i++)await Task.Delay(30);
+        await (Task)typeof(TagEditorView).GetMethod("SelectSongs",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!.Invoke(editor,new object[]{new[]{"music-a"}})!;
         var title=Descendants(editor).OfType<TextBox>().Single(b=>b.Name=="TIT2");var save=Descendants(editor).OfType<Button>().Single(b=>b.Name=="SaveTags");
         title.Text=new string('W',300);await Idle();Check(title.ActualWidth<=320,"Long title must not expand textbox");Check(Descendants(editor).OfType<ScrollViewer>().Where(v=>v.Content is StackPanel).All(v=>v.ScrollableWidth<1),"Editor must not scroll horizontally");title.Text="invalid/title";Check(save.IsEnabled,"Metadata title must allow filename characters when rename is off");Capture(window,Path.Combine(output,"tags-validation.png"));
         title.Text="城市夜色";Check(save.IsEnabled,"Valid change should save");var original=store.Load().Single(j=>j.Id=="music-a").FilePath;
@@ -171,6 +196,7 @@ public static class Program
         Check(Descendants(editor).OfType<Grid>().Any(g=>g.AllowDrop&&g.Width==220),"Artwork drop target missing");
         await (Task)typeof(TagEditorView).GetMethod("Save",flags)!.Invoke(editor,null)!;
         foreach(var id in new[]{"music-a","music-b"}){var song=store.Load().Single(j=>j.Id==id);Check(song.CoverUserEdited,"Manual artwork protection not saved");Check(Id3Document.Read(song.FilePath!).GetCovers().Count==1,"Batch artwork not embedded");}
+        Check(!Directory.EnumerateFiles(output,"*.jpg").Any(),"Saving MP3 artwork created a standalone JPG");
         Capture(window,Path.Combine(output,"tag-cover-paste.png"));
         var service=new MusicMetadata(new System.Net.Http.HttpClient(new FingerprintHandler()));var audio=store.Load().Single(j=>j.Id=="music-a").FilePath!;
         var fpAudio=Path.Combine(output,"fingerprint-fixture.mp3");await ProcessRunner.Run(engine.FfmpegPath,["-y","-f","lavfi","-i","sine=frequency=440:duration=200","-codec:a","libmp3lame",fpAudio],null,CancellationToken.None);

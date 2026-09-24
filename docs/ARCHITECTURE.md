@@ -30,9 +30,9 @@ SessionGrants 僅存在記憶體：cellularAll、taskIds、suppressUnknownSpace�
 
 MusicBrainz 預設關閉。HTTP 工作池最多 5，MusicBrainz 查詢起點至少相隔 1 秒，429/503 延後；精確歌曲名及歌手、唯一 recording 才查 Cover Art Archive approved front。查不到時保留影片縮圖。這不是身份或作品權利的權威證明。
 
-兩端以原始圖片 bytes 寫 ID3 APIC：type=3 Front Cover；第二圖 type=0 Other、description=Video thumbnail。Windows 外部 cover.jpg 保持非隱藏，以同目錄暫存再替換，sharing violation 顯示重試/跳過，跳過不寫日誌。Android 使用真實 parent URI 建立 `.covers/.nomedia` 及 cover.jpg，不解析 opaque document ID 為檔案路徑。JPEG 以原圖保存，其他格式只在外部 cover.jpg 轉 JPEG；內嵌 APIC 不重壓。
+兩端以原始圖片 bytes 寫 ID3 APIC：type=3 Front Cover；第二圖 type=0 Other、description=Video thumbnail。MP3 封面只存於音訊標籤，下載及手動編輯均不額外輸出 JPG；影片縮圖如有啟用，仍可作為獨立檔案保存。內嵌 APIC 不重壓。
 
-實體 MP3 才進 MediaScannerConnection.scanFile；content:// 由提供者管理；`.covers` 不掃描。批次外部封面每個不同目錄一次，Android 失敗只發出彙總通知。
+實體 MP3 才進 MediaScannerConnection.scanFile；content:// 由提供者管理。批次編輯封面直接更新各 MP3 的 APIC。
 
 ## 5. MP3Tag 編輯器
 

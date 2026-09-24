@@ -50,7 +50,7 @@ public sealed partial class Downloader
             } finally {if(File.Exists(staging))File.Delete(staging);}
             j.FilePath=destination;j.ProcessingSeconds=processingSeconds?.Invoke();j.State=JobState.Completed;j.Progress=100;j.TotalBytes=new FileInfo(destination).Length;j.Bytes=j.TotalBytes.Value;j.CompletedAt=DateTimeOffset.UtcNow;store.Save(j);
             try {
-                foreach(var sidecar in System.IO.Directory.EnumerateFiles(work,"media.*").Where(f=>Path.GetExtension(f) is ".srt" or ".vtt" or ".jpg")) {
+                foreach(var sidecar in System.IO.Directory.EnumerateFiles(work,"media.*").Where(f=>DownloadOptions.PublishSidecar(j,f))) {
                     var suffix=Path.GetFileName(sidecar)[5..];var target=Path.Combine(j.Directory,Path.GetFileNameWithoutExtension(destination)+suffix);File.Copy(sidecar,target,true);
                 }
                 File.Delete(file);

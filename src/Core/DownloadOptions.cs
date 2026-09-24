@@ -101,7 +101,12 @@ public static class DownloadOptions
             if(p.DownloadSubtitles){a.AddRange(["--write-subs","--write-auto-subs","--sub-langs",p.SubtitleLanguages,"--sub-format",$"{p.SubtitleFormat}/best","--convert-subs",p.SubtitleFormat]);if(p.EmbedSubtitles)a.Add("--embed-subs");}
         }
         if(p.KeepMetadata)a.Add("--embed-metadata");
-        if(p.KeepThumbnail)a.AddRange(["--write-thumbnail","--convert-thumbnails","jpg"]);
+        if(p.KeepThumbnail&&j.Mode!=DownloadMode.Mp3)a.AddRange(["--write-thumbnail","--convert-thumbnails","jpg"]);
         return a;
     }
+    public static bool PublishSidecar(DownloadJob job,string path)=>Path.GetExtension(path).ToLowerInvariant() switch{
+        ".srt" or ".vtt"=>true,
+        ".jpg"=>job.Mode!=DownloadMode.Mp3,
+        _=>false
+    };
 }
