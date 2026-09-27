@@ -14,6 +14,17 @@ class BundledYtDlpTest {
         assertTrue(BundledYtDlp.isOlder(null))
     }
 
+    @Test fun knownOldArchiveIsReplacedEvenWhenAndroidCannotInspectZipimport() {
+        assertTrue(BundledYtDlp.shouldReplaceInstalled("89a0d9058ea9018e380b7771898ff46e393a1986dcd13fef331693c87ce1fca4", null))
+        assertFalse(BundledYtDlp.shouldReplaceInstalled(BundledYtDlp.bundledSha256, null))
+        assertFalse(BundledYtDlp.shouldReplaceInstalled("unknown-newer-archive", null))
+        assertFalse(BundledYtDlp.shouldReplaceInstalled("unknown-newer-archive", "2026.09.01"))
+    }
+
+    @Test fun bundledResourceMatchesExpectedDigest() {
+        assertEquals(BundledYtDlp.bundledSha256, BundledYtDlp.sha256(File("src/main/res/raw/ytdlp")))
+    }
+
     @Test fun readsInstalledZipimportVersion() {
         val archive = File.createTempFile("yt-dlp-test", ".zip")
         try {
