@@ -172,14 +172,21 @@ public sealed partial class Downloader : IAsyncDisposable
     }
     public async Task<MediaInfo> Analyze(string url, List<string>? auth = null, CancellationToken ct = default)
     {
-        Validation.WebUrl(url); var text = await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), new[] { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--dump-single-json", "--skip-download", "--no-warnings" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(auth ?? []).Concat(["--", url]), null, ct);
+        Validation.WebUrl(url);
+        var effectiveAuth = auth;
+        if(effectiveAuth is null && Settings.CookieFile.Length > 0 && new[] { "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be" }.Contains(new Uri(url).Host))
+        {
+            if(!File.Exists(Settings.CookieFile)) throw new IOException("Cookie 檔案不存在 / Cookie file missing");
+            effectiveAuth = ["--cookies", Settings.CookieFile];
+        }
+        var text = await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), new[] { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--dump-single-json", "--skip-download", "--no-warnings" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(effectiveAuth ?? []).Concat(["--", url]), null, ct);
         using var doc = JsonDocument.Parse(text); var root = doc.RootElement;
         string Get(string key) => root.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
         static double? Number(JsonElement element, string key) => element.TryGetProperty(key, out var n) && n.ValueKind == JsonValueKind.Number && n.TryGetDouble(out var value) ? value : null;
         static string Text(JsonElement element, string key) => element.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()! : "";
         var formats = root.TryGetProperty("formats", out var fs) && fs.ValueKind == JsonValueKind.Array ? fs.EnumerateArray().Select(f => new MediaFormat(Text(f, "ext"), Number(f, "height") is double h ? (int)h : null, Text(f, "vcodec") is not ("" or "none"), Text(f, "acodec") is not ("" or "none"), (Number(f, "filesize") ?? Number(f, "filesize_approx")) is double b ? (long)b : null, Number(f, "tbr"), Text(f, "format_id"), Text(f, "vcodec"), Number(f, "filesize") is null)).ToArray() : [];
         var info=new MediaInfo(Get("track") is { Length: > 0 } track ? track : Get("title"), Get("artist"), Get("album"), Get("thumbnail") is { Length: > 0 } t ? t : null, Number(root, "duration"), formats, AlbumArtwork.Candidates(root));
-        if(auth is null || auth.Count==0){if(analysisCache.Count>64)analysisCache.Clear();analysisCache[url]=(info,DateTimeOffset.UtcNow);}
+        if(effectiveAuth is null || effectiveAuth.Count==0){if(analysisCache.Count>64)analysisCache.Clear();analysisCache[url]=(info,DateTimeOffset.UtcNow);}
         return info;
     }
     async Task Discover(DownloadJob parent, List<string> auth, CancellationToken ct)

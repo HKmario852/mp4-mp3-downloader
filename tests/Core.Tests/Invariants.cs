@@ -3,6 +3,7 @@ using Xunit;
 namespace Omni.Tests;
 public sealed class Invariants
 {
+    [Fact] public void AgeGateExplainsAccountConfirmation() { var message = ProcessRunner.Diagnose("ERROR: Sign in to confirm your age"); Assert.Contains("年齡確認", message); Assert.Contains("Cookie", message); }
     [Fact] public void RawFrameEditPreservesOtherInstances() { var path = Path.GetTempFileName(); try { var d = Id3Document.Read(path); d.SetRaw("TXXX", [0, 1]); d.SetRaw("TXXX#1", [0, 2]); d.SetRaw("TXXX", [0, 3]); Assert.Equal(new byte[] { 0, 2 }, d.Frames[1].Data); } finally { File.Delete(path); } }
     [Fact] public async Task FramingUsesUtf8ByteCountAndRejectsOversize() { using var stream = new MemoryStream(); await Ipc.Write(stream, new IntakeRequest(Guid.NewGuid().ToString(), "https://www.youtube.com/watch?v=日本語", "mp3"), CancellationToken.None); stream.Position = 0; var r = await Ipc.Read<IntakeRequest>(stream, CancellationToken.None); Assert.Contains("日本語", r.Url); using var bad = new MemoryStream(BitConverter.GetBytes(Ipc.MaxBytes + 1)); await Assert.ThrowsAsync<InvalidDataException>(() => Ipc.Read<IntakeRequest>(bad, CancellationToken.None)); }
     [Theory]

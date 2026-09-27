@@ -18,6 +18,6 @@ public static class ProcessRunner
         return output.ToString();
     }
     public static string Redact(string s) => System.Text.RegularExpressions.Regex.Replace(s, @"https?://\S+|(?i)(cookie|authorization|token)\s*[:=].*", "[已隱藏敏感資料]");
-    public static string Diagnose(string s) => s.Contains("Cloudflare", StringComparison.OrdinalIgnoreCase) ? "網站的防機械人驗證阻擋下載，請改用可直接存取的來源；本工具不會繞過驗證。" : s.Contains("Sign in", StringComparison.OrdinalIgnoreCase) || s.Contains("403") ? "網站要求登入或拒絕存取，請重新登入並從擴充功能重送；會員權限仍由網站決定。" : s.Contains("No space", StringComparison.OrdinalIgnoreCase) ? "儲存空間不足，請釋放空間後重試。" : s.Contains("ffmpeg", StringComparison.OrdinalIgnoreCase) ? "媒體處理失敗，請檢查 ffmpeg 與來源格式。" : "下載失敗，請檢查網路或更新 yt-dlp，詳細原因見原始診斷。";
+    public static string Diagnose(string s) => s.Contains("Cloudflare", StringComparison.OrdinalIgnoreCase) ? "網站的防機械人驗證阻擋下載，請改用可直接存取的來源；本工具不會繞過驗證。" : s.Contains("confirm your age", StringComparison.OrdinalIgnoreCase) ? "影片需要 YouTube 登入及年齡確認。請先用自己的帳號在瀏覽器完成確認，再於設定 → 網絡匯入該帳號的 Cookie 檔案，或用已登入瀏覽器的擴充功能重新傳送。" : s.Contains("Sign in", StringComparison.OrdinalIgnoreCase) || s.Contains("403") ? "網站要求登入或拒絕存取，請重新登入並從擴充功能重送；會員權限仍由網站決定。" : s.Contains("No space", StringComparison.OrdinalIgnoreCase) ? "儲存空間不足，請釋放空間後重試。" : s.Contains("ffmpeg", StringComparison.OrdinalIgnoreCase) ? "媒體處理失敗，請檢查 ffmpeg 與來源格式。" : "下載失敗，請檢查網路或更新 yt-dlp，詳細原因見原始診斷。";
 }
 public sealed class DownloadException(string message, string stderr) : Exception(message) { public string Stderr { get; } = stderr; }

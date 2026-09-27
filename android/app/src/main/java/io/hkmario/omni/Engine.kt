@@ -29,7 +29,7 @@ class Engine(val context: Context) {
     private var lastRate:Int?=null;private val networkPaused=mutableSetOf<String>();private var wasBusy=false
     val spaceQuestions=MutableStateFlow<List<SpaceQuestion>>(emptyList())
     private val active=ConcurrentHashMap<String,Job>();@Volatile var serviceRunning=false
-    init { UiLanguage.value=prefs.value.language;mutable.value.forEach(db::save);scope.launch{try{YoutubeDL.getInstance().init(context);FFmpeg.getInstance().init(context);ready.complete(Unit)}catch(e: Exception){initError.value="下載引擎初始化失敗：${e.message}";ready.completeExceptionally(e)}} }
+    init { UiLanguage.value=prefs.value.language;mutable.value.forEach(db::save);scope.launch{try{BundledYtDlp.ensureCurrent(context);YoutubeDL.getInstance().init(context);FFmpeg.getInstance().init(context);ready.complete(Unit)}catch(e: Exception){initError.value="下載引擎初始化失敗：${e.message}";ready.completeExceptionally(e)}} }
     val tagImports=java.util.concurrent.ConcurrentHashMap<String,TaskItem>()
     @Synchronized fun update(id: String,transform: (TaskItem)->TaskItem) { if(tagImports.containsKey(id)){tagImports[id]=transform(tagImports.getValue(id));return};mutable.value=mutable.value.map{if(it.id==id)transform(it).also(db::save)else it} }
     @Synchronized private fun add(t: TaskItem) { db.save(t);mutable.value=mutable.value+t }
@@ -137,6 +137,6 @@ class Engine(val context: Context) {
     suspend fun renameDownloaded(id:String,name:String)=withContext(Dispatchers.IO){require(name.isNotBlank()&&Rules.titleError(name)==null){Rules.titleError(name)?:"Filename required"};val t=get(id);require(t.state==State.Completed);val path=t.path?:error("File missing");val newPath=if(path.startsWith("content://")){val doc=androidx.documentfile.provider.DocumentFile.fromSingleUri(context,Uri.parse(path))?:error("File missing");check(doc.renameTo(name+"."+t.extension)){"Cannot rename file"};doc.uri.toString()}else{val source=File(path);val target=File(source.parentFile,name+"."+t.extension);require(!target.exists()){"Filename already exists"};check(source.renameTo(target)){"Cannot rename file"};target.absolutePath};tasks.value.filter{it.path==path}.forEach{row->update(row.id){it.copy(path=newPath)}}}
     companion object {
         fun redact(s: String)=s.replace(Regex("https?://\\S+|(?i)(cookie|authorization|token)\\s*[:=].*"),"[已隱藏敏感資料]")
-        fun diagnose(s: String)=if(s.contains("403")||s.contains("Sign in",true))"網站要求登入或拒絕存取。可於網絡設定匯入自己的 Cookie；如開啟 VPN，請檢查地區及出口連線。"else if(s.contains("space",true))"儲存空間不足，請釋放空間或選擇另一個目錄。"else "下載失敗，請檢查網路及影片可用性；原始診斷可匯出分享。"
+        fun diagnose(s: String)=if(s.contains("confirm your age",true))"影片需要 YouTube 登入及年齡確認。請先用你自己的帳號在瀏覽器完成確認，再於設定 → 網絡匯入該帳號的 Netscape cookies.txt，儲存後重試。只更新 yt-dlp 無法解除這項限制。"else if(s.contains("403")||s.contains("Sign in",true))"網站要求登入或拒絕存取。可於網絡設定匯入自己的 Cookie；如開啟 VPN，請檢查地區及出口連線。"else if(s.contains("space",true))"儲存空間不足，請釋放空間或選擇另一個目錄。"else "下載失敗，請檢查網路及影片可用性；原始診斷可匯出分享。"
     }
 }
