@@ -39,6 +39,33 @@ public sealed class DownloadOptionsTests
         Assert.Contains("--write-thumbnail",DownloadOptions.Format(video,p));
         Assert.True(DownloadOptions.PublishSidecar(video,"media.jpg"));
     }
+    [Fact] public void VideoThumbnailIsOffByDefaultAndOnlyPublishedWhenEnabled()
+    {
+        var video=new DownloadJob{Mode=DownloadMode.Mp4,OutputFormat="mp4"};
+        var defaults=new Preferences();
+        Assert.False(defaults.KeepThumbnail);
+        Assert.DoesNotContain("--write-thumbnail",DownloadOptions.Format(video,defaults));
+        Assert.False(DownloadOptions.PublishSidecar(video,"media.jpg",defaults.KeepThumbnail));
+        defaults.KeepThumbnail=true;
+        Assert.Contains("--write-thumbnail",DownloadOptions.Format(video,defaults));
+        Assert.True(DownloadOptions.PublishSidecar(video,"media.jpg",defaults.KeepThumbnail));
+    }
+    [Fact] public void OldThumbnailDefaultTurnsOffOnceButLaterOptInIsPreserved()
+    {
+        var root=Path.Combine(Path.GetTempPath(),"omni-thumbnail-test-"+Guid.NewGuid());
+        try {
+            var store=new Store(root);store.SavePreferences(new Preferences{KeepThumbnail=true});
+            var database=Path.Combine(root,"history.db");
+            using(var db=new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={database}")){
+                db.Open();using var read=db.CreateCommand();read.CommandText="SELECT json FROM settings WHERE key='preferences'";
+                var old=System.Text.Json.Nodes.JsonNode.Parse((string)read.ExecuteScalar()!)!.AsObject();old.Remove("thumbnailPreferenceVersion");
+                using var write=db.CreateCommand();write.CommandText="UPDATE settings SET json=$json WHERE key='preferences'";write.Parameters.AddWithValue("$json",old.ToJsonString());write.ExecuteNonQuery();
+            }
+            var migrated=store.Preferences();Assert.False(migrated.KeepThumbnail);
+            migrated.KeepThumbnail=true;store.SavePreferences(migrated);
+            Assert.True(store.Preferences().KeepThumbnail);
+        } finally {Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();Directory.Delete(root,true);}
+    }
     [Fact] public async Task RenameCollisionPreservesBothFilesAndAllMatchingRecords()
     {
         var root=Path.Combine(Path.GetTempPath(),"omni-rename-test-"+Guid.NewGuid());Directory.CreateDirectory(root);

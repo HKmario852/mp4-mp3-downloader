@@ -35,6 +35,8 @@ public partial class MainWindow : Window
         Refresh(); StatusLabel.Text = engine.ToolsReady ? "已準備就緒" : "請先執行 scripts/Prepare-Tools.ps1 準備 yt-dlp 與 ffmpeg。";
     }
     public void Reveal() { ShowInTaskbar = true; Show(); WindowState = WindowState.Normal; Activate(); if (!NativeFocus.Foreground(new System.Windows.Interop.WindowInteropHelper(this).Handle)) NativeFocus.Flash(new System.Windows.Interop.WindowInteropHelper(this).Handle); }
+    void ClearUrlClick(object sender,RoutedEventArgs e){UrlBox.Clear();UrlBox.Focus();}
+    void ClearSearchClick(object sender,RoutedEventArgs e){SearchBox.Clear();SearchBox.Focus();}
     public async void OpenHistory() { if(!await LeaveSettings())return;history=true;tagsPage=false;recentSelection=false; ShowLibrary(false);Reveal(); }
     public void AskChoice(DownloadJob j)
     {

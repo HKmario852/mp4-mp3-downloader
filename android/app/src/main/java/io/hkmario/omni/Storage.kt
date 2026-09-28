@@ -51,10 +51,10 @@ class Storage(private val context: Context, private val grants: SessionGrants) {
         } finally { if(!committed){temp.delete();backup?.renameTo(name)} }
         }finally{publishMutex.unlock()}
     }
-    suspend fun sidecars(work:File,published:Published,audioOnly:Boolean=false):Int=withContext(Dispatchers.IO) {
+    suspend fun sidecars(work:File,published:Published,publishThumbnail:Boolean=false):Int=withContext(Dispatchers.IO) {
         val name=if(published.path.startsWith("content://"))DocumentFile.fromSingleUri(context,Uri.parse(published.path))?.name?:"media" else File(published.path).name
         val stem=name.substringBeforeLast('.');var failures=0
-        work.listFiles()?.filter{it.name.startsWith("media.")&&it.extension in listOf("srt","vtt","jpg")&&(!audioOnly||it.extension!="jpg")}?.forEach{source->
+        work.listFiles()?.filter{it.name.startsWith("media.")&&it.extension in listOf("srt","vtt","jpg")&&(publishThumbnail||it.extension!="jpg")}?.forEach{source->
             try {val targetName=stem+source.name.removePrefix("media")
                 if(published.parent.startsWith("content://")){val parent=TreeDocument(context,Uri.parse(published.parent));val uri=parent.find(targetName)?:parent.create(if(source.extension=="jpg")"image/jpeg"else"text/plain",targetName);context.contentResolver.openOutputStream(uri,"wt")!!.use{o->source.inputStream().use{it.copyTo(o)}}}
                 else copyFileVerified(source,File(published.parent,targetName))

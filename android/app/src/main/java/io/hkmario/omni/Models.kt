@@ -24,7 +24,7 @@ import java.util.UUID
  val monitorClipboard:Boolean=false,val tempDirectory:String="internal",val duplicateAction:String="rename",val autoRetry:Boolean=true,
  val retryCount:Int=3,val retrySeconds:Int=2,val cleanFailed:Boolean=false,val completionAction:String="none",val defaultType:String="video",
  val videoFormat:String="mp4",val audioFormat:String="mp3",val videoCodec:String="auto",val downloadSubtitles:Boolean=false,
- val subtitleLanguages:String="en,zh-Hant",val subtitleFormat:String="srt",val embedSubtitles:Boolean=false,val keepThumbnail:Boolean=true,
+ val subtitleLanguages:String="en,zh-Hant",val subtitleFormat:String="srt",val embedSubtitles:Boolean=false,val keepThumbnail:Boolean=false,val thumbnailPreferenceVersion:Int=1,
  val embedThumbnail:Boolean=true,val keepMetadata:Boolean=true,val videoNaming:String="{title}",val audioNaming:String="{title}",
  val proxyMode:String="system",val proxyUrl:String="",val timeoutSeconds:Int=30,val connectionRetries:Int=3,val fragments:Int=1,
  val limitKiB:Int=0,val scheduleLimit:Boolean=false,val limitStart:String="18:00",val limitEnd:String="23:00",val scheduledKiB:Int=1024,
@@ -38,6 +38,10 @@ import java.util.UUID
  fun effectiveLimit()=if(scheduleLimit&&Options.inPeriod(limitStart,limitEnd))scheduledKiB else limitKiB
  fun isQuiet()=quietHours&&Options.inPeriod(quietStart,quietEnd)
 }
+
+fun Prefs.migrateThumbnailPreference(raw: String?): Prefs =
+    if (raw != null && !raw.contains("\"thumbnailPreferenceVersion\"")) copy(keepThumbnail=false,thumbnailPreferenceVersion=1)
+    else this
 val TaskItem.extension:String get()=outputFormat.ifBlank{mode}
 
 class SessionGrants {

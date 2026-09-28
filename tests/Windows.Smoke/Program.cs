@@ -60,6 +60,7 @@ public static class Program
                 if (args.Contains("--v2-regression")) { await CheckV2(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--update-regression")) { await CheckUpdate(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--library-regression")) { await CheckLibrary(window,engine,store,app,output); await engine.DisposeAsync(); window.AllowClose=true; window.Close(); app.Shutdown(0); return; }
+                if (args.Contains("--clear-input-regression")) { await CheckClearInputs(window,app,output); await engine.DisposeAsync(); window.AllowClose=true; window.Close(); app.Shutdown(0); return; }
                 if (args.Contains("--ui-regression")) { await CheckUi(window, app, output); await engine.DisposeAsync(); window.AllowClose=true; window.Close(); app.Shutdown(0); return; }
                 if (args.Contains("--render-only")) { Capture(window, Path.Combine(output, "windows-desktop.png")); await engine.DisposeAsync(); window.Close(); app.Shutdown(0); return; }
                 var p = engine.Settings; p.DownloadDirectory = Path.Combine(output, "media"); p.MusicBrainz=args.Contains("--music-download-smoke"); engine.SaveSettings(p);
@@ -239,6 +240,19 @@ public static class Program
     {
         var visual = (FrameworkElement)window.Content; visual.UpdateLayout(); var bounds=visual.LayoutTransform.TransformBounds(new Rect(0,0,visual.ActualWidth,visual.ActualHeight));var width=bounds.Width+visual.Margin.Left+visual.Margin.Right; var height=bounds.Height+visual.Margin.Top+visual.Margin.Bottom; var bitmap = new RenderTargetBitmap((int)width, (int)height, 96, 96, PixelFormats.Pbgra32); var background = new DrawingVisual(); using (var dc = background.RenderOpen()) dc.DrawRectangle(window.Background, null, new Rect(0, 0, width, height)); bitmap.Render(background); bitmap.Render(visual); var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap)); using var f = File.Create(path); png.Save(f);
     }
+    static async Task CheckClearInputs(MainWindow window,System.Windows.Application app,string output)
+    {
+        var url=(TextBox)window.FindName("UrlBox");var urlClear=(Button)window.FindName("ClearUrlButton");
+        var search=(TextBox)window.FindName("SearchBox");var searchClear=(Button)window.FindName("ClearSearchButton");
+        if(urlClear.Visibility!=Visibility.Collapsed||searchClear.Visibility!=Visibility.Collapsed)throw new Exception("Clear buttons should hide when empty");
+        url.Text="https://example.org/video";search.Text="artist";
+        await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        if(urlClear.Visibility!=Visibility.Visible||searchClear.Visibility!=Visibility.Visible)throw new Exception("Clear buttons should appear with text");
+        Capture(window,Path.Combine(output,"clear-inputs-visible.png"));
+        urlClear.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));searchClear.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        if(url.Text!=""||search.Text!=""||urlClear.Visibility!=Visibility.Collapsed||searchClear.Visibility!=Visibility.Collapsed)throw new Exception("Clear buttons failed to clear and hide");
+        File.WriteAllText(Path.Combine(output,"clear-inputs.json"),"{\"passed\":true}");
+    }
     static async Task CheckUi(MainWindow window, System.Windows.Application app, string output)
     {
         void Check(bool valid,string reason) { if(!valid) throw new Exception(reason); }
@@ -246,6 +260,8 @@ public static class Program
         void Click(string name) => Find<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         window.OpenHistory(); var grid=Find<DataGrid>("JobGrid"); grid.SelectedIndex=0;
         var url=Find<TextBox>("UrlBox"); var full="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared"; url.Text=full;
+        Check(Find<Button>("ClearUrlButton").Visibility==Visibility.Visible,"URL clear button is hidden with text");Click("ClearUrlButton");Check(url.Text=="","URL clear button did not clear text");url.Text=full;
+        var search=Find<TextBox>("SearchBox");search.Text="fixture";Check(Find<Button>("ClearSearchButton").Visibility==Visibility.Visible,"Search clear button is hidden with text");Click("ClearSearchButton");Check(search.Text=="","Search clear button did not clear text");
         window.ApplyPreview(new("介面測試 · 完整縮圖與深藍選取","","",null,240,[new("mp4",1080,true,false,60_000_000,2000),new("mp4",720,true,false,30_000_000,1000),new("m4a",null,false,true,4_000_000,128)]));
         var thumb=Find<System.Windows.Controls.Image>("Thumbnail"); var drawing=new DrawingVisual(); using(var dc=drawing.RenderOpen()){dc.DrawRectangle(Brushes.DarkSlateBlue,null,new Rect(0,0,640,360));dc.DrawRectangle(Brushes.MediumPurple,null,new Rect(0,0,80,80));dc.DrawRectangle(Brushes.DeepSkyBlue,null,new Rect(560,0,80,80));dc.DrawRectangle(Brushes.Turquoise,null,new Rect(0,280,80,80));dc.DrawRectangle(Brushes.Orange,null,new Rect(560,280,80,80));} var bitmap=new RenderTargetBitmap(640,360,96,96,PixelFormats.Pbgra32);bitmap.Render(drawing);thumb.Source=bitmap;
         await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);

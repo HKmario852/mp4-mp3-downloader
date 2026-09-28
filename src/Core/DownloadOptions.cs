@@ -29,7 +29,8 @@ public sealed partial class Preferences
     public string SubtitleLanguages { get; set; } = "en,zh-Hant";
     public string SubtitleFormat { get; set; } = "srt";
     public bool EmbedSubtitles { get; set; }
-    public bool KeepThumbnail { get; set; } = true;
+    public bool KeepThumbnail { get; set; }
+    public int ThumbnailPreferenceVersion { get; set; } = 1;
     public bool EmbedThumbnail { get; set; } = true;
     public bool KeepMetadata { get; set; } = true;
     public string VideoNaming { get; set; } = "{title}";
@@ -104,9 +105,9 @@ public static class DownloadOptions
         if(p.KeepThumbnail&&j.Mode!=DownloadMode.Mp3)a.AddRange(["--write-thumbnail","--convert-thumbnails","jpg"]);
         return a;
     }
-    public static bool PublishSidecar(DownloadJob job,string path)=>Path.GetExtension(path).ToLowerInvariant() switch{
+    public static bool PublishSidecar(DownloadJob job,string path,bool keepThumbnail=true)=>Path.GetExtension(path).ToLowerInvariant() switch{
         ".srt" or ".vtt"=>true,
-        ".jpg"=>job.Mode!=DownloadMode.Mp3,
+        ".jpg"=>keepThumbnail&&job.Mode!=DownloadMode.Mp3,
         _=>false
     };
 }
