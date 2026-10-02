@@ -15,7 +15,7 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
+        if (args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
@@ -55,6 +55,7 @@ public static class Program
                 if(args.Contains("--v27-regression")){await CheckV27(window,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v26-regression")){await CheckV26(window,engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--cache-regression")){await CheckCache(engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
+                if(args.Contains("--artwork-drop-regression")){await CheckArtworkDrop(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v24-regression")){await CheckV21(window,engine,store,app,output);await CheckV24(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if (args.Contains("--v21-regression")) { await CheckV21(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
                 if (args.Contains("--v2-regression")) { await CheckV2(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
@@ -182,6 +183,41 @@ public static class Program
         var libraryTable=Descendants(host).OfType<DataGrid>().Single();libraryTable.SelectedItem=libraryTable.Items[0];await Idle();Check(libraryTable.Columns[0].Visibility==Visibility.Collapsed,"Single selection hides checkbox");libraryTable.SelectedItems.Add(libraryTable.Items[1]);await Idle();Check(libraryTable.Columns[0].Visibility==Visibility.Visible,"Multiple selection shows checkboxes");Check(libraryTable.Items.Cast<LibraryView.LibraryRow>().Count(r=>r.Checked)==2,"Row selection must select files for actions");Capture(window,Path.Combine(output,"library-equal-width.png"));
         File.WriteAllText(Path.Combine(output,"checks.json"),Json.Encode(new{passed=true,checks=new[]{"embedded tag editor","invalid title guard","actual tag save","filename preserved","full-width settings","125 percent text and 110 percent UI","settings returns to original editor","select all and clear","conditional checkboxes","equal-width summary","song scrollbar drag","library row selection","fixed long-title width","settings revert is clean"}}));
     }
+    static async Task CheckArtworkDrop(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output){
+        void Check(bool ok,string message){if(!ok)throw new Exception(message);}
+        byte[] Png(int w,int h,byte color){var pixels=Enumerable.Repeat(color,w*h*4).ToArray();var bitmap=BitmapSource.Create(w,h,96,96,PixelFormats.Bgra32,null,pixels,w*4);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using var buffer=new MemoryStream();encoder.Save(buffer);return buffer.ToArray();}
+        var original=Png(250,250,240);var replacement=Png(475,500,80);var song=store.Load().Single(j=>j.Id=="music-a");
+        var doc=Id3Document.Read(song.FilePath!);doc.SetText("COMM","保留註解 日本語");doc.SetCovers([new(original,"image/png","Original",3)]);var tagged=song.FilePath+".tagged";await doc.Write(song.FilePath!,tagged);File.Move(tagged,song.FilePath!,true);var originalHash=await TagReview.Hash(song.FilePath!);
+        ((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));var editor=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;while(editor.Busy)await Task.Delay(20);
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        await (Task)typeof(TagEditorView).GetMethod("SelectSongs",flags)!.Invoke(editor,new object[]{new[]{"music-a"}})!;
+        var read=typeof(TagEditorView).GetMethod("ReadCoverData",flags)!;var selected=(HashSet<string>)typeof(TagEditorView).GetField("selected",flags)!.GetValue(editor)!;
+        async Task Read(System.Windows.IDataObject data)=>await (Task)read.Invoke(editor,new object[]{data})!;
+        byte[] Preview()=>((List<Cover>)typeof(TagEditorView).GetField("covers",flags)!.GetValue(editor)!).Single().Bytes;
+        var cover=(System.Windows.Controls.Image)typeof(TagEditorView).GetField("artwork",flags)!.GetValue(editor)!;
+        var target=Descendants(editor).OfType<Grid>().Single(g=>g.Name=="AlbumCoverDropTarget");Check(target.AllowDrop&&target.IsVisible,"Artwork drop target must be reachable");var path=Path.Combine(output,"拖放封面.png");File.WriteAllBytes(path,replacement);
+        var ctor=typeof(DragEventArgs).GetConstructors(flags).Single();
+        var drag=(DragEventArgs)ctor.Invoke(new object[]{new System.Windows.DataObject(DataFormats.FileDrop,new[]{path}),DragDropKeyStates.None,DragDropEffects.Copy,cover,new Point(110,110)});drag.RoutedEvent=DragDrop.PreviewDropEvent;cover.RaiseEvent(drag);while(editor.Busy)await Task.Delay(20);
+        Check(drag.Handled&&selected.SetEquals(new[]{"music-a"})&&Preview().SequenceEqual(replacement),"Dropping onto existing artwork must replace preview and preserve song selection");
+        var dataUrl="data:image/png;base64,"+Convert.ToBase64String(replacement);var browser=new System.Windows.DataObject();browser.SetData(DataFormats.Html,$"<a href='https://example.org/page'><img src='{dataUrl}'></a>");browser.SetData(DataFormats.UnicodeText,"https://example.org/page");
+        Check(ArtworkInput.CanRead(browser),"Browser HTML must be accepted by drag-over");await Read(browser);Check(Preview().SequenceEqual(replacement),"Browser HTML image must be used instead of its page link");
+        var stream=new MemoryStream(replacement);stream.Position=stream.Length;await Read(new System.Windows.DataObject("PNG",stream));Check(stream.Position==stream.Length&&Preview().SequenceEqual(replacement),"PNG stream must be read from beginning without changing source position");
+        await Read(new System.Windows.DataObject("FileContents",new MemoryStream[]{new(replacement)}));Check(Preview().SequenceEqual(replacement),"Virtual image file must load");
+        await Read(new System.Windows.DataObject(DataFormats.UnicodeText,new Uri(path).AbsoluteUri));Check(Preview().SequenceEqual(replacement),"file URI must load");
+        var unnamed=Path.Combine(output,"browser-image.tmp");File.WriteAllBytes(unnamed,replacement);await Read(new System.Windows.DataObject(DataFormats.FileDrop,new[]{unnamed}));Check(Preview().SequenceEqual(replacement),"Image file without PNG extension must load from its contents");
+        var remote=new System.Windows.DataObject();remote.SetData(DataFormats.Html,"<img src='https://example.org/cover?x=1&amp;y=2'>");remote.SetData(DataFormats.UnicodeText,"https://example.org/page");var captured=ArtworkInput.Capture(remote);Check(captured.Url?.AbsoluteUri=="https://example.org/cover?x=1&y=2","HTML image URL must be decoded");
+        using(var http=new System.Net.Http.HttpClient(new ArtworkHandler(replacement)))Check((await captured.Read(engine.FfmpegPath,CancellationToken.None,http)).SequenceEqual(replacement),"Remote image bytes must load");
+        using(var urlStream=new MemoryStream(System.Text.Encoding.Unicode.GetBytes("https://example.org/cover\0"))){var url=ArtworkInput.Capture(new System.Windows.DataObject("UniformResourceLocatorW",urlStream));Check(url.Url?.AbsoluteUri=="https://example.org/cover","Browser Unicode URL stream must load");}
+        var webp=Path.Combine(output,"album.webp");await ProcessRunner.Run(engine.FfmpegPath,["-y","-i",path,"-frames:v","1","-c:v","libwebp",webp],null,CancellationToken.None);await Read(new System.Windows.DataObject(DataFormats.FileDrop,new[]{webp}));Check(AlbumArtwork.Dimensions(Preview())==(475,500),"WebP conversion must preserve dimensions");
+        var failedBefore=Preview();await Read(new System.Windows.DataObject(DataFormats.Text,"not an image"));Check(Preview().SequenceEqual(failedBefore),"Unsupported drop must preserve artwork draft");Check(await TagReview.Hash(song.FilePath!)==originalHash,"Artwork preview must not write MP3");
+        // Drop a PNG slightly outside the image: it must not be imported as an empty MP3 selection.
+        var outer=(DragEventArgs)ctor.Invoke(new object[]{new System.Windows.DataObject(DataFormats.FileDrop,new[]{path}),DragDropKeyStates.None,DragDropEffects.Copy,editor,new Point(10,10)});outer.RoutedEvent=DragDrop.DropEvent;editor.RaiseEvent(outer);while(editor.Busy)await Task.Delay(20);Check(selected.SetEquals(new[]{"music-a"})&&Preview().SequenceEqual(replacement),"Image drop outside artwork must keep selected song and change artwork");
+        await (Task)typeof(TagEditorView).GetMethod("Save",flags)!.Invoke(editor,null)!;doc=Id3Document.Read(song.FilePath!);Check(doc.GetCovers().Single().Bytes.SequenceEqual(replacement),"Save must persist replacement artwork");Check(doc.Text("COMM")=="保留註解 日本語","Cover replacement must preserve other tags");Check(!Directory.EnumerateFiles(output,"*.jpg").Any(),"Artwork import must not create JPG sidecars");
+        await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);Capture(window,Path.Combine(output,"artwork-drop-saved.png"));File.WriteAllText(Path.Combine(output,"artwork-drop-checks.json"),Json.Encode(new{passed=true,checks=new[]{"existing-cover drop routing","local PNG","browser HTML image","browser Unicode URL stream","remote image request","virtual image content","PNG stream reset","file URI","WebP dimensions","failure preserves draft","outside-image routing","preview does not write","saved APIC replacement","Unicode tags preserved","no JPG sidecar"}}));
+    }
+    sealed class ArtworkHandler(byte[] image):System.Net.Http.HttpMessageHandler{
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken ct)=>Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new System.Net.Http.ByteArrayContent(image)});
+    }
     static async Task CheckV24(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output){
         void Check(bool ok,string message){if(!ok)throw new Exception(message);}
         ((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
@@ -191,9 +227,9 @@ public static class Program
         await (Task)typeof(TagEditorView).GetMethod("SelectSongs",flags)!.Invoke(editor,new object[]{new[]{"music-a","music-b"}})!;
         var pixel=BitmapSource.Create(475,500,96,96,PixelFormats.Bgra32,null,Enumerable.Repeat((byte)128,475*500*4).ToArray(),475*4);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(pixel));using var encoded=new MemoryStream();encoder.Save(encoded);var png=encoded.ToArray();var artPath=Path.Combine(output,"album-cover.png");File.WriteAllBytes(artPath,png);
         var read=typeof(TagEditorView).GetMethod("ReadCoverData",flags)!;
-        read.Invoke(editor,new object[]{new System.Windows.DataObject(DataFormats.FileDrop,new[]{artPath})});Check(editor.Dirty,"File artwork must create unsaved preview");Check(!Id3Document.Read(store.Load().Single(j=>j.Id=="music-a").FilePath!).GetCovers().Any(),"Preview must not write before save");
-        read.Invoke(editor,new object[]{new System.Windows.DataObject("PNG",new MemoryStream(png))});Check(editor.Dirty,"PNG clipboard format must preview");
-        read.Invoke(editor,new object[]{new System.Windows.DataObject(DataFormats.Bitmap,pixel)});Check(editor.Dirty,"Bitmap clipboard format must preview");
+        await (Task)read.Invoke(editor,new object[]{new System.Windows.DataObject(DataFormats.FileDrop,new[]{artPath})})!;Check(editor.Dirty,"File artwork must create unsaved preview");Check(!Id3Document.Read(store.Load().Single(j=>j.Id=="music-a").FilePath!).GetCovers().Any(),"Preview must not write before save");
+        await (Task)read.Invoke(editor,new object[]{new System.Windows.DataObject("PNG",new MemoryStream(png))})!;Check(editor.Dirty,"PNG clipboard format must preview");
+        await (Task)read.Invoke(editor,new object[]{new System.Windows.DataObject(DataFormats.Bitmap,pixel)})!;Check(editor.Dirty,"Bitmap clipboard format must preview");
         Check(Descendants(editor).OfType<Grid>().Any(g=>g.AllowDrop&&g.Width==220),"Artwork drop target missing");
         await (Task)typeof(TagEditorView).GetMethod("Save",flags)!.Invoke(editor,null)!;
         foreach(var id in new[]{"music-a","music-b"}){var song=store.Load().Single(j=>j.Id==id);Check(song.CoverUserEdited,"Manual artwork protection not saved");Check(Id3Document.Read(song.FilePath!).GetCovers().Count==1,"Batch artwork not embedded");}
