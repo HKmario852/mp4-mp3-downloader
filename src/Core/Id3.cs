@@ -64,9 +64,19 @@ public sealed class Id3Document
         var result=new List<Cover>();
         foreach(var f in Frames.Where(f=>f.Id=="APIC")){
             var b=f.Data;if(b.Length<5)continue;int end=Array.IndexOf(b,(byte)0,1);if(end<0||end+2>=b.Length)continue;
-            var mime=Encoding.ASCII.GetString(b,1,end-1);byte type=b[end+1];int start=end+2,step=b[0] is 1 or 2?2:1;
-            for(;start+step<=b.Length;start+=step)if(b[start]==0&&(step==1||b[start+1]==0)){start+=step;break;}
-            if(start<b.Length)result.Add(new(b[start..],mime,"",type));
+            var mime=Encoding.ASCII.GetString(b,1,end-1);byte type=b[end+1];int description=end+2,start=description,step=b[0] is 1 or 2?2:1;
+            bool terminated=false;
+            for(;start+step<=b.Length;start+=step)if(b[start]==0&&(step==1||b[start+1]==0)){terminated=true;break;}
+            if(!terminated)continue;
+            var text=DecodeText([b[0],..b[description..start]]);start+=step;
+            // Some older files pad APIC's empty description with an extra NUL.
+            // Tolerate bounded padding only before a recognized image signature;
+            // leave the original frame bytes untouched for unselected-tag writes.
+            int candidate=start;
+            while(candidate<b.Length&&candidate-start<16&&b[candidate]==0)candidate++;
+            var image=b.AsSpan(candidate);
+            if(candidate>start&&((mime.Equals("image/jpeg",StringComparison.OrdinalIgnoreCase)&&image.StartsWith(new byte[]{255,216,255}))||(mime.Equals("image/png",StringComparison.OrdinalIgnoreCase)&&image.StartsWith(new byte[]{137,80,78,71,13,10,26,10}))))start=candidate;
+            if(start<b.Length)result.Add(new(b[start..],mime,text,type));
         }
         return result;
     }

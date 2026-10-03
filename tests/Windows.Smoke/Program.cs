@@ -15,7 +15,7 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--folder-import-regression") || args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
+        if (args.Contains("--metadata-read-regression") || args.Contains("--folder-import-regression") || args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
@@ -55,6 +55,7 @@ public static class Program
                 if(args.Contains("--v27-regression")){await CheckV27(window,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v26-regression")){await CheckV26(window,engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--cache-regression")){await CheckCache(engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
+                if(args.Contains("--metadata-read-regression")){await CheckMetadataRead(window,engine,store,output,args.Length>3?args[3]:null,args.Length>4?args[4]:null);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--folder-import-regression")){await CheckFolderImport(window,engine,store,output,args.Length>3?args[3]:null);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--artwork-drop-regression")){await CheckArtworkDrop(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v24-regression")){await CheckV21(window,engine,store,app,output);await CheckV24(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
@@ -78,6 +79,48 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckMetadataRead(MainWindow window,Downloader engine,Store store,string output,string? taggedFolder,string? otherFolder)
+    {
+        void Check(bool value,string message){if(!value)throw new Exception(message);}
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        var files=store.Load(true).Where(j=>j.Extension=="mp3").ToArray();
+        var png=File.ReadAllBytes(Path.Combine(Environment.CurrentDirectory,"src/Windows/Assets/brand.png"));
+        foreach(var j in files){await new TagEditor(store).Apply([j],new(new(){["TIT2"]="歌曲 "+j.Id,["TPE1"]="正確演出者",["TALB"]="實際專輯"},Covers:[new(png,"image/png","Front",3)],RenameFile:false));j.Title="過期標題";j.Artist="未知的演出者";store.Save(j);}
+        var a=files.Single(j=>j.Id=="music-a");var b=files.Single(j=>j.Id=="music-b");
+        async Task SetRawCover(DownloadJob j,byte[] bytes){var doc=Id3Document.Read(j.FilePath!);doc.SetRaw("APIC",bytes);var temp=j.FilePath+".fixture";await doc.Write(j.FilePath!,temp);File.Move(temp,j.FilePath!,true);}
+        await SetRawCover(a,[0,..System.Text.Encoding.ASCII.GetBytes("image/png"),0,3,0,0,..png]);
+        await SetRawCover(b,[0,..System.Text.Encoding.ASCII.GetBytes("image/jpeg"),0,3,0,1,2,3]);
+        ((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var editor=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;
+        async Task Ready(){while(editor.Busy)await Task.Delay(20);await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);}
+        async Task Select(string id){await Ready();await (Task)typeof(TagEditorView).GetMethod("SelectSongs",flags)!.Invoke(editor,new object[]{new[]{id}})!;await Ready();}
+        Dictionary<string,TextBox> Fields()=>(Dictionary<string,TextBox>)typeof(TagEditorView).GetField("fields",flags)!.GetValue(editor)!;
+        List<DownloadJob> Songs()=>(List<DownloadJob>)typeof(TagEditorView).GetField("songs",flags)!.GetValue(editor)!;
+        var image=(System.Windows.Controls.Image)typeof(TagEditorView).GetField("artwork",flags)!.GetValue(editor)!;
+        var location=(TextBlock)typeof(TagEditorView).GetField("fileLocation",flags)!.GetValue(editor)!;
+        var error=(TextBlock)typeof(TagEditorView).GetField("error",flags)!.GetValue(editor)!;
+        await Select(a.Id);Check(Fields()["TPE1"].Text=="正確演出者"&&Fields()["TALB"].Text=="實際專輯","Metadata must come from ID3, not cached history");
+        Check(image.Source is not null&&!editor.Dirty,"Padded embedded artwork must render without marking tags dirty");Check(location.Text==a.FilePath,"Selected file path must be visible");
+        await Select(b.Id);Check(Fields()["TALB"].Text=="實際專輯"&&image.Source is null&&error.Text.Contains("封面"),"Invalid artwork must not prevent metadata display or retain previous cover");
+        Fields()["TIT2"].Text="未儲存嘅修改";await (Task)typeof(TagEditorView).GetMethod("LoadThumbnails",flags)!.Invoke(editor,null)!;
+        Check(Fields()["TIT2"].Text=="未儲存嘅修改"&&editor.Dirty,"Refreshing row metadata must preserve editor drafts");
+        await (Task)typeof(TagEditorView).GetMethod("LoadSelection",flags)!.Invoke(editor,null)!;
+        string? actualArtist=null;int actualCoverWidth=0;
+        if(taggedFolder is not null&&otherFolder is not null)
+        {
+            var paths=new[]{Path.Combine(taggedFolder,"バケモノと呼ばれて.mp3"),Path.Combine(otherFolder,"バケモノと呼ばれて.mp3")}.Select(Path.GetFullPath).ToArray();
+            var hashes=await Task.WhenAll(paths.Select(TagReview.Hash));var history=store.Load().Select(Json.Encode).ToArray();
+            await editor.Import(paths);await Ready();var tagged=Songs().Single(j=>j.FilePath==paths[0]);var other=Songs().Single(j=>j.FilePath==paths[1]);
+            Check(tagged.Id!=other.Id,"Same-title files in different folders must remain independently selectable");
+            await Select(other.Id);Check(Fields()["TPE1"].Text=="未知的演出者"&&image.Source is not null,"Downloads copy must display its actual tags and recover padded JPEG");
+            window.UpdateLayout();Capture(window,Path.Combine(output,"downloads-copy.png"));
+            await Select(tagged.Id);Check(Fields()["TPE1"].Text=="藤川千愛"&&Fields()["TALB"].Text=="HiKiKoMoRi"&&Fields()["TRCK"].Text=="10/11","Desktop copy metadata must appear correctly");
+            Check(location.Text==paths[0]&&image.Source is BitmapSource,"Desktop file path and embedded cover must be visible");actualArtist=Fields()["TPE1"].Text;actualCoverWidth=(image.Source as BitmapSource)?.PixelWidth??0;
+            Check(hashes.SequenceEqual(await Task.WhenAll(paths.Select(TagReview.Hash))),"User MP3 files must remain byte-identical");Check(history.SequenceEqual(store.Load().Select(Json.Encode)),"Reading/importing metadata must not rewrite history");
+        }
+        window.UpdateLayout();Capture(window,Path.Combine(output,"metadata-read.png"));
+        File.WriteAllText(Path.Combine(output,"metadata-read-checks.json"),Json.Encode(new{passed=true,actualArtist,actualCoverWidth,checks=new[]{"disk tags override stale rows","padded artwork preview","invalid artwork isolation","visible source path","unsaved draft preservation","distinct folder copies","real desktop tags","real downloads tags","no user file or history writes"}}));
     }
     static async Task CheckFolderImport(MainWindow window,Downloader engine,Store store,string output,string? userFolder)
     {
@@ -196,6 +239,8 @@ public static class Program
         async Task Idle()=>await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
         window.Width=1580;window.Height=980;
         ((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Idle();var editor=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;while(editor.Busy)await Task.Delay(20);
+        // Match the real Scan entry point: review the currently selected file.
+        await (Task)typeof(TagEditorView).GetMethod("SelectSongs",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!.Invoke(editor,new object[]{new[]{"music-a"}})!;
         var title=Descendants(editor).OfType<TextBox>().Single(b=>b.Name=="TIT2");title.Text="未儲存草稿";var comment=Descendants(editor).OfType<TextBox>().Single(b=>b.Name=="COMM");comment.Text="保留這個草稿";
         var root=window.Content;var job=store.Load().Single(j=>j.Id=="music-a");var before=await TagReview.Hash(job.FilePath!);var imagePath=Path.Combine(Environment.CurrentDirectory,"artifacts/qa-0.2.4-reference/reference-album-cover.jpg");var image=File.ReadAllBytes(File.Exists(imagePath)?imagePath:Path.Combine(Environment.CurrentDirectory,"src/Windows/Assets/brand.png"));
         window.MusicServiceFactory=()=>new MusicMetadata(new System.Net.Http.HttpClient(new ReviewHandler(image)));window.OpenAcoustIdReview(editor,job);await Idle();Check(window.Content is AcoustIdReviewView&&window.ActiveView=="acoustid-review","Root navigation missing");Check(app.Windows.Count==1,"Scan opened a second window");Check(!((FrameworkElement)window.FindName("MainNav")).IsVisible,"Sidebar visible on review");((AcoustIdReviewView)window.Content).Back();await Idle();Check(ReferenceEquals(root,window.Content)&&title.Text=="未儲存草稿"&&comment.Text=="保留這個草稿","Cancel discarded draft");Check(before==await TagReview.Hash(job.FilePath!),"Cancel changed file");
