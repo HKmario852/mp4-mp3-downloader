@@ -15,7 +15,7 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
+        if (args.Contains("--folder-import-regression") || args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
@@ -55,6 +55,7 @@ public static class Program
                 if(args.Contains("--v27-regression")){await CheckV27(window,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v26-regression")){await CheckV26(window,engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--cache-regression")){await CheckCache(engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
+                if(args.Contains("--folder-import-regression")){await CheckFolderImport(window,engine,store,output,args.Length>3?args[3]:null);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--artwork-drop-regression")){await CheckArtworkDrop(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v24-regression")){await CheckV21(window,engine,store,app,output);await CheckV24(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if (args.Contains("--v21-regression")) { await CheckV21(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return; }
@@ -77,6 +78,54 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckFolderImport(MainWindow window,Downloader engine,Store store,string output,string? userFolder)
+    {
+        void Check(bool value,string message){if(!value)throw new Exception(message);}
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        List<DownloadJob> Songs(TagEditorView view)=>(List<DownloadJob>)typeof(TagEditorView).GetField("songs",flags)!.GetValue(view)!;
+        HashSet<string> Selected(TagEditorView view)=>(HashSet<string>)typeof(TagEditorView).GetField("selected",flags)!.GetValue(view)!;
+        async Task Ready(TagEditorView view){while(view.Busy)await Task.Delay(20);await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);}
+        var folder=Path.Combine(output,"import-folder");Directory.CreateDirectory(folder);
+        var jobs=store.Load(true).Where(j=>j.Extension=="mp3").ToArray();
+        foreach(var j in jobs){var path=Path.Combine(folder,Path.GetFileName(j.FilePath)!);File.Copy(j.FilePath!,path,true);j.FilePath=path;await new TagEditor(store).Apply([j],new(new(){{"TIT2","同名歌曲 日本語"},{"TPE1","Aimer"}},RenameFile:false));j.Title="過期歌曲資料";j.Artist="未知的演出者";store.Save(j);}
+        var original=jobs.First(j=>j.Id=="music-a");
+        var alias=Json.Decode<DownloadJob>(Json.Encode(original));alias.Id="duplicate-history";alias.FilePath=Path.Combine(folder,".","music-a.mp3").Replace('\\','/');store.Save(alias);
+        var initial=Json.Decode<DownloadJob>(Json.Encode(alias));initial.Id="initial-alias";initial.FilePath=initial.FilePath!.ToUpperInvariant();
+        typeof(MainWindow).GetMethod("ShowTagEditor",flags)!.Invoke(window,new object[]{new[]{initial}});
+        var editor=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;await Ready(editor);
+        Check(Songs(editor).Count==2,"History and initial aliases must produce one row per file");
+        Check(Selected(editor).Count==1&&Songs(editor).Any(j=>Selected(editor).Contains(j.Id)),"Initial alias selection must map to the retained row");
+        var hashes=await Task.WhenAll(jobs.Select(j=>TagReview.Hash(j.FilePath!)));var history=store.Load().Select(Json.Encode).ToArray();
+        await editor.Import([folder,initial.FilePath!,original.FilePath!]);await Ready(editor);
+        Check(Songs(editor).Count==2,"Overlapping folder/file inputs must retain distinct same-title files without duplicates");
+        Check(Songs(editor).All(j=>j.Title=="同名歌曲 日本語"&&j.Artist=="Aimer"),"Existing cached row metadata must refresh from disk");
+        Check(Songs(editor).Any(j=>j.Id==original.Id&&j.Url==original.Url),"Import must preserve the history job identity and provenance");
+        Check(Selected(editor).Count==2,"All canonical imported rows must be selected");
+        await editor.Import([folder.ToUpperInvariant()]);await Ready(editor);
+        await Task.WhenAll(editor.Import([folder]),editor.Import([folder]));await Ready(editor);
+        Check(Songs(editor).Count==2&&Selected(editor).Count==2,"Repeated and concurrent imports must remain idempotent");
+        Check(history.SequenceEqual(store.Load().Select(Json.Encode)),"Import must not rewrite download history");
+        Check(hashes.SequenceEqual(await Task.WhenAll(jobs.Select(j=>TagReview.Hash(j.FilePath!)))),"Import must not change MP3 bytes");
+        var moved=Path.Combine(folder,"renamed.mp3");File.Move(jobs.First(j=>j.Id=="music-b").FilePath!,moved);
+        await editor.Import([folder]);await Ready(editor);
+        Check(Songs(editor).Count==2&&Songs(editor).All(j=>File.Exists(j.FilePath)),"Reimport after a file move must remove the stale editor row");
+        ((Dictionary<string,TextBox>)typeof(TagEditorView).GetField("fields",flags)!.GetValue(editor)!)["TALB"].Text="匯入後儲存";
+        await (Task)typeof(TagEditorView).GetMethod("Save",flags)!.Invoke(editor,null)!;await Ready(editor);
+        Check(Songs(editor).All(j=>Id3Document.Read(j.FilePath!).Text("TALB")=="匯入後儲存"),"Each unique imported file must remain editable");
+        int? actualFiles=null;
+        if(userFolder is not null)
+        {
+            var files=Directory.EnumerateFiles(userFolder,"*.mp3",SearchOption.AllDirectories).ToArray();var before=await Task.WhenAll(files.Select(TagReview.Hash));
+            var isolated=new Store(Path.Combine(output,"user-folder-read-only-data"));editor=new TagEditorView(window,engine,isolated);((ContentControl)window.FindName("PageHost")).Content=editor;await Ready(editor);
+            await editor.Import([userFolder]);await Ready(editor);await editor.Import([userFolder]);await Ready(editor);
+            Check(Songs(editor).Count==files.Length,"Actual folder must produce exactly one row per MP3 after repeated import");
+            Check(Songs(editor).Select(j=>Path.GetFullPath(j.FilePath!)).Distinct(StringComparer.OrdinalIgnoreCase).Count()==files.Length,"Actual folder paths must be unique");
+            Check(before.SequenceEqual(await Task.WhenAll(files.Select(TagReview.Hash))),"Actual user MP3 files must remain byte-identical");actualFiles=files.Length;
+            await (Task)typeof(TagEditorView).GetMethod("SelectSongs",flags)!.Invoke(editor,new object[]{new[]{Songs(editor).First().Id}})!;
+        }
+        window.UpdateLayout();Capture(window,Path.Combine(output,"folder-import.png"));
+        File.WriteAllText(Path.Combine(output,"folder-import-checks.json"),Json.Encode(new{passed=true,actualFiles,checks=new[]{"history and initial aliases","folder/file overlap","same title distinct files","tag refresh","stable history identity","case-insensitive selection","repeat and concurrent imports","stale moved rows","no pre-save writes","save unique files","actual folder read-only hashes"}}));
     }
     static async Task CheckV27(MainWindow window,System.Windows.Application app,string output)
     {

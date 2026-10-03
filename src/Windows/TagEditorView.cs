@@ -29,8 +29,8 @@ public sealed class TagEditorView : UserControl
     public TagEditorView(Window owner,Downloader engine,Store store,DownloadJob[]? initial=null)
     {
         this.owner=owner;this.engine=engine;this.store=store;Resources=owner.Resources;
-        songs.AddRange(store.Load(true).Where(j=>j.State==JobState.Completed&&j.Extension=="mp3"&&File.Exists(j.FilePath)));
-        if(initial is not null)foreach(var j in initial){if(songs.All(x=>x.Id!=j.Id))songs.Add(j);selected.Add(j.Id);}
+        foreach(var j in store.Load(true).Where(j=>j.State==JobState.Completed&&j.Extension=="mp3"&&File.Exists(j.FilePath)).OrderByDescending(j=>j.CompletedAt??j.CreatedAt))MergeSong(j);
+        if(initial is not null)foreach(var j in initial.Where(j=>j.Extension=="mp3"&&File.Exists(j.FilePath)))selected.Add(MergeSong(j).Id);
         SortSongs();
         var root=new DockPanel{Margin=new Thickness(18)};var top=new StackPanel();top.Children.Add(Text(T("標籤編輯","Tag editor"),28));top.Children.Add(Text(T("編輯 MP3 標題、演出者、專輯與封面資料","Edit MP3 song, artist, album and artwork"),14));
         var toolbar=new DockPanel{Margin=new Thickness(0,12,0,10)};
@@ -103,7 +103,42 @@ public sealed class TagEditorView : UserControl
     async void PasteCover(){for(int attempt=0;attempt<3;attempt++)try{var data=System.Windows.Clipboard.GetDataObject();if(data is null)error.Text="剪貼簿沒有圖片。請先複製圖片或圖片檔案。";else await ReadCoverData(data);return;}catch(System.Runtime.InteropServices.COMException){if(attempt==2)error.Text="剪貼簿暫時被其他程式佔用，請稍後再試。";else await Task.Delay(100);}catch(Exception e){error.Text=e.Message;return;}}
     void Play(){try{if(current?.FilePath is null)return;if(player.Source is null){player.Open(new Uri(current.FilePath));player.Volume=volume.Value;}if(playing)player.Pause();else player.Play();playing=!playing;playback.Start();}catch(Exception e){error.Text=e.Message;}}
     async void Pick(bool folder){if(folder){var d=new Microsoft.Win32.OpenFolderDialog();if(d.ShowDialog(owner)==true)await Import([d.FolderName]);}else{var d=new Microsoft.Win32.OpenFileDialog{Filter="MP3|*.mp3",Multiselect=true};if(d.ShowDialog(owner)==true)await Import(d.FileNames);}}
-    public async Task Import(IEnumerable<string> paths){if(!await CanLeave())return;try{var imported=await Task.Run(()=>{var files=paths.SelectMany(p=>Directory.Exists(p)?Directory.EnumerateFiles(p,"*.mp3",new EnumerationOptions{RecurseSubdirectories=true,IgnoreInaccessible=true,AttributesToSkip=FileAttributes.ReparsePoint}):new[]{p});return files.Where(p=>Path.GetExtension(p).Equals(".mp3",StringComparison.OrdinalIgnoreCase)).Select(p=>{var d=Id3Document.Read(p);return new DownloadJob{FilePath=Path.GetFullPath(p),Title=string.IsNullOrEmpty(d.Text("TIT2"))?Path.GetFileNameWithoutExtension(p):d.Text("TIT2"),Artist=d.Text("TPE1"),Album=d.Text("TALB"),Mode=DownloadMode.Mp3,OutputFormat="mp3",State=JobState.Completed,CompletedAt=new DateTimeOffset(File.GetLastWriteTimeUtc(p),TimeSpan.Zero)};}).ToArray();});foreach(var j in imported)if(songs.All(x=>!string.Equals(x.FilePath,j.FilePath,StringComparison.OrdinalIgnoreCase)))songs.Add(j);SortSongs();selected.Clear();foreach(var j in songs.Where(j=>imported.Any(x=>x.FilePath==j.FilePath)))selected.Add(j.Id);Rows();await LoadSelection();_=LoadThumbnails();}catch(Exception e){error.Text=T("加入失敗：","Import failed: ")+e.Message;}}
+    // Download history and folder imports describe files, not separate editor rows.
+    // Preserve the existing job ID and download provenance when refreshing its tags.
+    static string SongPath(string path)=>Path.GetFullPath(path);
+    DownloadJob MergeSong(DownloadJob incoming,bool refresh=false)
+    {
+        var path=SongPath(incoming.FilePath!);
+        var existing=songs.FirstOrDefault(j=>string.Equals(SongPath(j.FilePath!),path,StringComparison.OrdinalIgnoreCase));
+        if(existing is null){incoming.FilePath=path;songs.Add(incoming);return incoming;}
+        if(refresh){existing.Title=incoming.Title;existing.Artist=incoming.Artist;existing.Album=incoming.Album;thumbnails.Remove(existing.Id);}
+        return existing;
+    }
+    public async Task Import(IEnumerable<string> paths)
+    {
+        if(!await CanLeave()||Busy)return;
+        busy=true;IsEnabled=false;error.Text="";
+        try
+        {
+            var inputs=paths.ToArray();
+            var imported=await Task.Run(()=>
+            {
+                var files=inputs.SelectMany(p=>Directory.Exists(p)?Directory.EnumerateFiles(p,"*.mp3",new EnumerationOptions{RecurseSubdirectories=true,IgnoreInaccessible=true,AttributesToSkip=FileAttributes.ReparsePoint}):new[]{p});
+                return files.Where(p=>Path.GetExtension(p).Equals(".mp3",StringComparison.OrdinalIgnoreCase)).Select(SongPath).Distinct(StringComparer.OrdinalIgnoreCase).Select(p=>
+                {
+                    var d=Id3Document.Read(p);
+                    return new DownloadJob{FilePath=p,Title=string.IsNullOrEmpty(d.Text("TIT2"))?Path.GetFileNameWithoutExtension(p):d.Text("TIT2"),Artist=d.Text("TPE1"),Album=d.Text("TALB"),Mode=DownloadMode.Mp3,OutputFormat="mp3",State=JobState.Completed,CompletedAt=new DateTimeOffset(File.GetLastWriteTimeUtc(p),TimeSpan.Zero)};
+                }).ToArray();
+            });
+            // External moves/renames must not leave a phantom copy in the editor.
+            foreach(var stale in songs.Where(j=>!File.Exists(j.FilePath)).ToArray()){songs.Remove(stale);thumbnails.Remove(stale.Id);}
+            selected.Clear();
+            foreach(var j in imported)selected.Add(MergeSong(j,true).Id);
+            SortSongs();Rows();await LoadSelection();_=LoadThumbnails();
+        }
+        catch(Exception e){error.Text=T("加入失敗：","Import failed: ")+e.Message;}
+        finally{busy=false;IsEnabled=true;Changed(true);}
+    }
     public async Task<bool> CanLeave()=>!Busy&&(!Dirty||await new ConfirmWindow(owner,T("未儲存變更","Unsaved changes"),T("離開並捨棄未儲存嘅標籤變更？","Leave and discard tag changes?"),T("捨棄變更","Discard changes")).Ask());
     async Task Save(){if(Busy||!Dirty)return;player.Close();playing=false;playback.Stop();busy=true;IsEnabled=false;try{var rawFields=Json.Decode<Dictionary<string,string>>(raw.Text);var rows=songs.Where(j=>selected.Contains(j.Id)).ToArray();var persisted=store.Load().Select(j=>j.Id).ToHashSet();var changes=new Dictionary<string,string>(delta);var newCovers=covers;var shouldRename=rename.IsChecked==true;await Task.Run(async()=>{foreach(var j in rows){var d=Id3Document.Read(j.FilePath!);var values=new Dictionary<string,string>(changes);if(d.Version==4&&values.Remove("TYER",out var year))values["TDRC"]=year;await new TagEditor(store).Apply([j],new(values,rawFields,newCovers,shouldRename),persisted.Contains(j.Id));}});engine.ReloadEditedJobs(rows.Where(j=>persisted.Contains(j.Id)).Select(j=>j.Id));Rows();await LoadSelection();_=LoadThumbnails();}catch(Exception e){error.Text=T("未能完成儲存：","Could not finish saving: ")+e.Message;}finally{busy=false;IsEnabled=true;Changed(true);}}
 }
