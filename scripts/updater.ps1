@@ -35,6 +35,11 @@ function Show-Bar([int]$Done,[int]$Total,[string]$Label) {
     $n=[Math]::Min(30,[int]($percent*30/100))
     Write-Host ("`r["+('#'*$n)+('-'*(30-$n))+"] $percent% $Label") -NoNewline
 }
+function Get-StreamHash([IO.Stream]$Stream) {
+    $digest=[Security.Cryptography.SHA256]::Create()
+    try{return [BitConverter]::ToString($digest.ComputeHash($Stream)).Replace('-','')}
+    finally{$digest.Dispose()}
+}
 function Get-Architecture {
     $arch=if($env:PROCESSOR_ARCHITEW6432){$env:PROCESSOR_ARCHITEW6432}else{$env:PROCESSOR_ARCHITECTURE}
     switch($arch.ToUpperInvariant()) { 'AMD64' {return 'x64'} 'ARM64' {return 'ARM64'} 'X86' {return 'x86'} default {throw "Unsupported system architecture: $arch"} }
@@ -84,6 +89,8 @@ $payload=Join-Path $stage 'payload';$backup=Join-Path $stage 'backup'
 [IO.Directory]::CreateDirectory($backup)|Out-Null
 $changed=New-Object 'System.Collections.Generic.List[string]'
 $created=New-Object 'System.Collections.Generic.List[string]'
+$retained=@{}
+$retainedHandles=New-Object 'System.Collections.Generic.List[System.IO.FileStream]'
 $success=$false;$restoreFailed=$false
 try {
     $archive=[IO.Compression.ZipFile]::OpenRead($zip)
@@ -114,8 +121,22 @@ try {
         }
         $done=0
         foreach($entry in $files.Values) {
-            $destination=Assert-Under (Join-Path $payload $entry.Name) $stage
-            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry,$destination,$false)
+            $existing=Assert-Under (Join-Path $install $entry.Name) $install
+            $same=$false
+            if(Test-Path -LiteralPath $existing -PathType Leaf) {
+                Assert-NoReparse $existing
+                if((Get-Item -LiteralPath $existing).Length -eq $entry.Length) {
+                    $input=$entry.Open();try{$expected=Get-StreamHash $input}finally{$input.Dispose()}
+                    $input=[IO.File]::OpenRead($existing);try{$same=(Get-StreamHash $input) -eq $expected}finally{$input.Dispose()}
+                    if($same){$retained[$entry.Name]=$expected}
+                }
+            }
+            if($same){Write-Host "`nRetaining verified unchanged file: $($entry.Name)"}
+            else {
+                $destination=Assert-Under (Join-Path $payload $entry.Name) $stage
+                try{[IO.Compression.ZipFileExtensions]::ExtractToFile($entry,$destination,$false)}
+                catch{throw "無法解壓 $($entry.Name)。可能被防毒攔截或目錄權限不足；安裝尚未開始，請查看防毒隔離紀錄。詳細資料：$($_.Exception.Message)"}
+            }
             $done++;Show-Bar $done $files.Count 'Validated extraction'
         }
         Write-Host ''
@@ -127,6 +148,14 @@ try {
         Write-Host 'Waiting for the application to exit. Choose Exit from its tray menu.'
         # No forced termination: the app shuts down children and checkpoints SQLite.
         $target.WaitForExit()
+    }
+    # Recheck retained files after the app exits, and keep read locks throughout
+    # installation. Unchanged binaries are never extracted, backed up or replaced.
+    foreach($name in $retained.Keys) {
+        $dest=Assert-Under (Join-Path $install $name) $install;Assert-NoReparse $dest
+        $handle=[IO.File]::Open($dest,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+        $retainedHandles.Add($handle)
+        if((Get-StreamHash $handle) -ne $retained[$name]){throw "Retained file changed during update: $name"}
     }
     $sourceFiles=@(Get-ChildItem -LiteralPath $payload -File)
     # Exclusive access preflight occurs before ANY installed file is changed.
@@ -160,5 +189,6 @@ try {
     if($Restart){Add-Type -AssemblyName PresentationFramework;[System.Windows.MessageBox]::Show(('更新未完成：'+$_.Exception.Message),'全能影音下載器更新')|Out-Null}
     throw
 } finally {
+    foreach($handle in $retainedHandles){$handle.Dispose()}
     if(-not $restoreFailed){$remove=Assert-Under $stage ([IO.Path]::GetTempPath());if(Test-Path -LiteralPath $remove){Remove-Item -LiteralPath $remove -Recurse -Force}}
 }
