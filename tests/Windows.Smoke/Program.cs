@@ -15,7 +15,7 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--metadata-read-regression") || args.Contains("--folder-import-regression") || args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
+        if (args.Contains("--library-persistence-regression") || args.Contains("--metadata-read-regression") || args.Contains("--folder-import-regression") || args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
@@ -56,6 +56,7 @@ public static class Program
                 if(args.Contains("--v26-regression")){await CheckV26(window,engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--cache-regression")){await CheckCache(engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--metadata-read-regression")){await CheckMetadataRead(window,engine,store,output,args.Length>3?args[3]:null,args.Length>4?args[4]:null);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
+                if(args.Contains("--library-persistence-regression")||args.Contains("--library-reopen")){await CheckLibraryPersistence(window,engine,store,output,args);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--folder-import-regression")){await CheckFolderImport(window,engine,store,output,args.Length>3?args[3]:null);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--artwork-drop-regression")){await CheckArtworkDrop(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v24-regression")){await CheckV21(window,engine,store,app,output);await CheckV24(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
@@ -79,6 +80,38 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckLibraryPersistence(MainWindow window,Downloader engine,Store store,string output,string[] args)
+    {
+        void Check(bool value,string message){if(!value)throw new Exception(message);}
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        List<DownloadJob> Songs(TagEditorView view)=>(List<DownloadJob>)typeof(TagEditorView).GetField("songs",flags)!.GetValue(view)!;
+        async Task<TagEditorView> Open(){((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);var view=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;while(view.Busy)await Task.Delay(20);return view;}
+        var folder=Path.Combine(output,"saved-library");
+        if(args.Contains("--library-reopen"))
+        {
+            var reopened=await Open();Check(store.TagLibrarySources().Count==1,"A new process must restore the saved folder");Check(Songs(reopened).Count(j=>j.FilePath!.StartsWith(folder+Path.DirectorySeparatorChar))==3,"A new process must load the folder's songs without another import");
+            Check(Songs(reopened).Select(j=>j.FilePath).Distinct(StringComparer.OrdinalIgnoreCase).Count()==Songs(reopened).Count,"Restart must not duplicate rows");
+            window.UpdateLayout();Capture(window,Path.Combine(output,"library-reopened.png"));File.WriteAllText(Path.Combine(output,"library-reopened.json"),Json.Encode(new{passed=true,count=Songs(reopened).Count}));return;
+        }
+        Directory.CreateDirectory(folder);
+        var fixture=store.Load().First(j=>j.Extension=="mp3").FilePath!;
+        foreach(var name in new[]{"歌一.mp3","歌二.mp3"})File.Copy(fixture,Path.Combine(folder,name),true);
+        var editor=await Open();var history=store.Load().Select(Json.Encode).ToArray();
+        await editor.Import([folder,folder+Path.DirectorySeparatorChar]);while(editor.Busy)await Task.Delay(20);
+        Check(store.TagLibrarySources().Count==1,"Repeated folder input must persist one source");Check(Songs(editor).Count(j=>j.FilePath!.StartsWith(folder+Path.DirectorySeparatorChar))==2,"Initial import must contain both songs");
+        ((Button)window.FindName("QueueNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        File.Move(Path.Combine(folder,"歌一.mp3"),Path.Combine(folder,"已改名.mp3"));File.Copy(fixture,Path.Combine(folder,"新歌.mp3"),true);
+        editor=await Open();Check(Songs(editor).Count(j=>j.FilePath!.StartsWith(folder+Path.DirectorySeparatorChar))==3,"Returning must discover new/renamed files without a manual import");
+        await editor.Import([folder]);while(editor.Busy)await Task.Delay(20);Check(Songs(editor).Count==5,"Restoring and importing again must merge with existing history rows");
+        Check(history.SequenceEqual(store.Load().Select(Json.Encode)),"Saved tag-library sources must not change download history");
+        var paths=Directory.GetFiles(folder,"*.mp3");var hashes=await Task.WhenAll(paths.Select(TagReview.Hash));
+        store.Checkpoint();
+        var executable=Environment.ProcessPath!;
+        await ProcessRunner.Run(executable,[output,args[1],"--library-reopen"],null,CancellationToken.None);
+        Check(File.Exists(Path.Combine(output,"library-reopened.json")),"The new-process restore test must finish");
+        Check(hashes.SequenceEqual(await Task.WhenAll(paths.Select(TagReview.Hash))),"Persistence and restore must not change MP3 bytes");
+        File.WriteAllText(Path.Combine(output,"library-persistence-checks.json"),Json.Encode(new{passed=true,checks=new[]{"source persistence","page navigation restore","new and renamed songs","deduplication","actual new-process restart","no download history changes","no MP3 writes"}}));
     }
     static async Task CheckMetadataRead(MainWindow window,Downloader engine,Store store,string output,string? taggedFolder,string? otherFolder)
     {

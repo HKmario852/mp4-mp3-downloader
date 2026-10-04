@@ -52,7 +52,28 @@ public sealed class TagEditorView : UserControl
         player.MediaFailed+=(_,e)=>error.Text=T("無法試聽：","Cannot preview: ")+e.ErrorException.Message;
         player.MediaEnded+=(_,_)=>{playing=false;player.Position=TimeSpan.Zero;};playback.Tick+=(_,_)=>{if(player.NaturalDuration.HasTimeSpan){seek.Maximum=Math.Max(1,player.NaturalDuration.TimeSpan.TotalSeconds);if(!seek.IsMouseCaptureWithin)seek.Value=player.Position.TotalSeconds;time.Text=$"{player.Position:m\\:ss} / {player.NaturalDuration.TimeSpan:m\\:ss}";}};
         Unloaded+=(_,_)=>{coverRead?.Cancel();playback.Stop();player.Close();};Loaded+=(_,_)=>Typography(this,engine.Settings.TextScale);
-        if(selected.Count==0&&songs.Count>0)selected.Add(songs[0].Id);Rows();_=LoadSelection();_=LoadThumbnails();
+        Rows();_=RestoreLibrary();
+    }
+    async Task RestoreLibrary()
+    {
+        busy=true;IsEnabled=false;state.Text=T("正在載入已加入嘅歌曲…","Loading saved songs…");
+        try
+        {
+            var sources=store.TagLibrarySources();
+            var result=await Task.Run(()=>TagLibrary.Read(sources));
+            foreach(var song in result.Songs)MergeSong(song,true);
+            SortSongs();if(selected.Count==0&&songs.Count>0)selected.Add(songs[0].Id);
+            Rows();await LoadSelection();ShowUnavailable(result);
+            _=LoadThumbnails();
+        }
+        catch(Exception e){error.Text=T("未能載入已加入嘅歌曲：","Could not load saved songs: ")+e.Message;}
+        finally{busy=false;IsEnabled=true;Changed(true);}
+    }
+    void ShowUnavailable(TagLibraryRead result)
+    {
+        if(result.Unavailable.Length==0)return;
+        error.Text=T($"有 {result.Unavailable.Length} 個已加入來源／檔案暫時無法讀取；來源已保留，下次會再嘗試。",$"{result.Unavailable.Length} saved sources/files could not be read. Their locations are retained for the next visit.");
+        error.ToolTip=string.Join(Environment.NewLine,result.Unavailable);
     }
     void SortSongs()=>songs.Sort((a,b)=>{
         static DateTimeOffset Date(DownloadJob song)=>song.CompletedAt??(song.FilePath is string path&&File.Exists(path)?new DateTimeOffset(File.GetLastWriteTimeUtc(path),TimeSpan.Zero):song.CreatedAt);
@@ -143,25 +164,18 @@ public sealed class TagEditorView : UserControl
         busy=true;IsEnabled=false;error.Text="";
         try
         {
-            var inputs=paths.ToArray();
-            var imported=await Task.Run(()=>
-            {
-                var files=inputs.SelectMany(p=>Directory.Exists(p)?Directory.EnumerateFiles(p,"*.mp3",new EnumerationOptions{RecurseSubdirectories=true,IgnoreInaccessible=true,AttributesToSkip=FileAttributes.ReparsePoint}):new[]{p});
-                return files.Where(p=>Path.GetExtension(p).Equals(".mp3",StringComparison.OrdinalIgnoreCase)).Select(SongPath).Distinct(StringComparer.OrdinalIgnoreCase).Select(p=>
-                {
-                    var d=Id3Document.Read(p);
-                    return new DownloadJob{FilePath=p,Title=string.IsNullOrEmpty(d.Text("TIT2"))?Path.GetFileNameWithoutExtension(p):d.Text("TIT2"),Artist=d.Text("TPE1"),Album=d.Text("TALB"),Mode=DownloadMode.Mp3,OutputFormat="mp3",State=JobState.Completed,CompletedAt=new DateTimeOffset(File.GetLastWriteTimeUtc(p),TimeSpan.Zero)};
-                }).ToArray();
-            });
+            var inputs=paths.Where(p=>Directory.Exists(p)||File.Exists(p)&&Path.GetExtension(p).Equals(".mp3",StringComparison.OrdinalIgnoreCase)).Select(TagLibrary.Source).ToArray();
+            var result=await Task.Run(()=>TagLibrary.Read(inputs));
+            store.RememberTagLibrarySources(inputs);
             // External moves/renames must not leave a phantom copy in the editor.
             foreach(var stale in songs.Where(j=>!File.Exists(j.FilePath)).ToArray()){songs.Remove(stale);thumbnails.Remove(stale.Id);}
             selected.Clear();
-            foreach(var j in imported)selected.Add(MergeSong(j,true).Id);
-            SortSongs();Rows();await LoadSelection();_=LoadThumbnails();
+            foreach(var j in result.Songs)selected.Add(MergeSong(j,true).Id);
+            SortSongs();Rows();await LoadSelection();ShowUnavailable(result);_=LoadThumbnails();
         }
         catch(Exception e){error.Text=T("加入失敗：","Import failed: ")+e.Message;}
         finally{busy=false;IsEnabled=true;Changed(true);}
     }
     public async Task<bool> CanLeave()=>!Busy&&(!Dirty||await new ConfirmWindow(owner,T("未儲存變更","Unsaved changes"),T("離開並捨棄未儲存嘅標籤變更？","Leave and discard tag changes?"),T("捨棄變更","Discard changes")).Ask());
-    async Task Save(){if(Busy||!Dirty)return;player.Close();playing=false;playback.Stop();busy=true;IsEnabled=false;try{var rawFields=Json.Decode<Dictionary<string,string>>(raw.Text);var rows=songs.Where(j=>selected.Contains(j.Id)).ToArray();var persisted=store.Load().Select(j=>j.Id).ToHashSet();var changes=new Dictionary<string,string>(delta);var newCovers=covers;var shouldRename=rename.IsChecked==true;await Task.Run(async()=>{foreach(var j in rows){var d=Id3Document.Read(j.FilePath!);var values=new Dictionary<string,string>(changes);if(d.Version==4&&values.Remove("TYER",out var year))values["TDRC"]=year;await new TagEditor(store).Apply([j],new(values,rawFields,newCovers,shouldRename),persisted.Contains(j.Id));}});engine.ReloadEditedJobs(rows.Where(j=>persisted.Contains(j.Id)).Select(j=>j.Id));Rows();await LoadSelection();_=LoadThumbnails();}catch(Exception e){error.Text=T("未能完成儲存：","Could not finish saving: ")+e.Message;}finally{busy=false;IsEnabled=true;Changed(true);}}
+    async Task Save(){if(Busy||!Dirty)return;player.Close();playing=false;playback.Stop();busy=true;IsEnabled=false;try{var rawFields=Json.Decode<Dictionary<string,string>>(raw.Text);var rows=songs.Where(j=>selected.Contains(j.Id)).ToArray();var persisted=store.Load().Select(j=>j.Id).ToHashSet();var changes=new Dictionary<string,string>(delta);var newCovers=covers;var shouldRename=rename.IsChecked==true;await Task.Run(async()=>{foreach(var j in rows){var previousPath=j.FilePath!;var d=Id3Document.Read(previousPath);var values=new Dictionary<string,string>(changes);if(d.Version==4&&values.Remove("TYER",out var year))values["TDRC"]=year;await new TagEditor(store).Apply([j],new(values,rawFields,newCovers,shouldRename),persisted.Contains(j.Id));if(previousPath!=j.FilePath)store.MoveTagLibraryFile(previousPath,j.FilePath!);}});engine.ReloadEditedJobs(rows.Where(j=>persisted.Contains(j.Id)).Select(j=>j.Id));Rows();await LoadSelection();_=LoadThumbnails();}catch(Exception e){error.Text=T("未能完成儲存：","Could not finish saving: ")+e.Message;}finally{busy=false;IsEnabled=true;Changed(true);}}
 }

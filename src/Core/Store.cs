@@ -9,7 +9,7 @@ public sealed class Store
         DataDirectory=Path.GetFullPath(directory);System.IO.Directory.CreateDirectory(directory);
         connection = new SqliteConnectionStringBuilder { DataSource = Path.Combine(directory, "history.db") }.ToString();
         using var db = Open(); using var c = db.CreateCommand();
-        c.CommandText = "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, requestId TEXT NOT NULL, history INTEGER NOT NULL DEFAULT 1, json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS requests ON jobs(requestId); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS groups(id TEXT PRIMARY KEY,json TEXT NOT NULL);"; c.ExecuteNonQuery();
+        c.CommandText = "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, requestId TEXT NOT NULL, history INTEGER NOT NULL DEFAULT 1, json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS requests ON jobs(requestId); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS groups(id TEXT PRIMARY KEY,json TEXT NOT NULL); CREATE TABLE IF NOT EXISTS tag_library_sources(path TEXT PRIMARY KEY COLLATE NOCASE,isFolder INTEGER NOT NULL);"; c.ExecuteNonQuery();
     }
     SqliteConnection Open() { var db = new SqliteConnection(connection); db.Open(); return db; }
     public void Save(DownloadJob j) { lock (gate) { using var db = Open(); using var c = db.CreateCommand(); c.CommandText = "INSERT INTO jobs(id,requestId,json) VALUES($id,$r,$j) ON CONFLICT(id) DO UPDATE SET json=$j"; c.Parameters.AddWithValue("$id", j.Id); c.Parameters.AddWithValue("$r", j.RequestId); c.Parameters.AddWithValue("$j", Json.Encode(j)); c.ExecuteNonQuery(); } }
@@ -20,5 +20,17 @@ public sealed class Store
     public void SavePreferences(Preferences p) { p.Validate(); using var db = Open(); using var c = db.CreateCommand(); c.CommandText = "INSERT OR REPLACE INTO settings VALUES('preferences',$j)"; c.Parameters.AddWithValue("$j", Json.Encode(p)); c.ExecuteNonQuery(); }
     public void SaveGroup(DownloadGroup g) { lock (gate) { using var db = Open(); using var c = db.CreateCommand(); c.CommandText = "INSERT OR REPLACE INTO groups VALUES($id,$j)"; c.Parameters.AddWithValue("$id", g.Id); c.Parameters.AddWithValue("$j", Json.Encode(g)); c.ExecuteNonQuery(); } }
     public List<DownloadGroup> Groups() { using var db = Open(); using var c = db.CreateCommand(); c.CommandText = "SELECT json FROM groups"; using var r = c.ExecuteReader(); var a = new List<DownloadGroup>(); while (r.Read()) a.Add(Json.Decode<DownloadGroup>(r.GetString(0))); return a; }
+    public List<TagLibrarySource> TagLibrarySources()
+    {
+        lock(gate){using var db=Open();using var c=db.CreateCommand();c.CommandText="SELECT path,isFolder FROM tag_library_sources ORDER BY rowid";using var r=c.ExecuteReader();var sources=new List<TagLibrarySource>();while(r.Read())sources.Add(new(r.GetString(0),r.GetBoolean(1)));return sources;}
+    }
+    public void RememberTagLibrarySources(IEnumerable<TagLibrarySource> sources)
+    {
+        lock(gate){using var db=Open();using var tx=db.BeginTransaction();foreach(var source in sources){using var c=db.CreateCommand();c.Transaction=tx;c.CommandText="INSERT INTO tag_library_sources(path,isFolder) VALUES($p,$f) ON CONFLICT(path) DO UPDATE SET isFolder=$f";c.Parameters.AddWithValue("$p",Path.TrimEndingDirectorySeparator(Path.GetFullPath(source.Path)));c.Parameters.AddWithValue("$f",source.IsFolder);c.ExecuteNonQuery();}tx.Commit();}
+    }
+    public void MoveTagLibraryFile(string previous,string current)
+    {
+        lock(gate){using var db=Open();using var tx=db.BeginTransaction();using var c=db.CreateCommand();c.Transaction=tx;c.CommandText="UPDATE OR REPLACE tag_library_sources SET path=$new WHERE path=$old AND isFolder=0";c.Parameters.AddWithValue("$old",Path.GetFullPath(previous));c.Parameters.AddWithValue("$new",Path.GetFullPath(current));c.ExecuteNonQuery();tx.Commit();}
+    }
     public void Checkpoint() { using var db = Open(); using var c = db.CreateCommand(); c.CommandText = "PRAGMA wal_checkpoint(TRUNCATE)"; c.ExecuteNonQuery(); }
 }
