@@ -21,7 +21,7 @@ public sealed class TagEditorView : UserControl
     readonly Image artwork=new(){Width=220,Height=220,Stretch=Stretch.Uniform};
     readonly CheckBox rename=new(){Content=T("同時重新命名檔案","Also rename files"),IsChecked=false};
     readonly Button undoReview=Button("復原上次套用",()=>{}); TagReviewUndo? lastUndo; DownloadJob? undoSong;
-    readonly Button save; readonly AudioPreview preview=new();
+    readonly Button save; readonly AudioPreview preview;
     string? anchor; List<Cover>? covers; bool loading,busy; DownloadJob? current;
     CancellationTokenSource? coverRead;
     public bool Busy=>busy||loading;
@@ -30,6 +30,9 @@ public sealed class TagEditorView : UserControl
     public TagEditorView(Window owner,Downloader engine,Store store,DownloadJob[]? initial=null)
     {
         this.owner=owner;this.engine=engine;this.store=store;Resources=owner.Resources;
+        var session=(owner as MainWindow)?.PreviewSession??new AudioPreviewSession();
+        if(owner is not MainWindow)owner.Closed+=(_,_)=>session.Dispose();
+        preview=new AudioPreview(session);
         foreach(var j in store.Load(true).Where(j=>j.State==JobState.Completed&&j.Extension=="mp3"&&File.Exists(j.FilePath)).OrderByDescending(j=>j.CompletedAt??j.CreatedAt))MergeSong(j);
         if(initial is not null)foreach(var j in initial.Where(j=>j.Extension=="mp3"&&File.Exists(j.FilePath)))selected.Add(MergeSong(j).Id);
         SortSongs();
@@ -37,7 +40,7 @@ public sealed class TagEditorView : UserControl
         var toolbar=new DockPanel{Margin=new Thickness(0,12,0,10)};
         toolbar.Children.Add(IconButton("add",T("加入 MP3","Add MP3"),()=>Pick(false),true));toolbar.Children.Add(IconButton("folder",T("加入資料夾","Add folder"),()=>Pick(true)));
         DockPanel.SetDock(counter,Dock.Right);toolbar.Children.Add(counter);toolbar.Children.Add(Hint(search,T("搜尋歌曲、演出者、專輯或檔名…","Search songs, artist, album or filename…")));top.Children.Add(toolbar);var selectionTools=new WrapPanel();selectionTools.Children.Add(Button(T("全選","Select all"),async()=>await SelectSongs(songs.Where(j=>HistorySearch.Matches(j,search.Text)).Select(j=>j.Id))));selectionTools.Children.Add(Button(T("取消全選","Clear selection"),async()=>await SelectSongs([])));selectionTools.Children.Add(IconButton("search",T("重新尋找封面","Find album artwork"),async()=>await FindArtwork()));selectionTools.Children.Add(IconButton("search","查找歌曲標籤",async()=>await FindMetadata(false)));selectionTools.Children.Add(IconButton("audio","Scan 音訊辨識",async()=>await FindMetadata(true)));top.Children.Add(selectionTools);DockPanel.SetDock(top,Dock.Top);root.Children.Add(top);
-        var footer=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right};footer.Children.Add(rename);undoReview.Visibility=Visibility.Collapsed;undoReview.Click+=async(_,_)=>{if(lastUndo is null||undoSong is null)return;try{await lastUndo.Restore(store,undoSong);engine.ReloadEditedJobs([undoSong.Id]);await ReviewApplied(undoSong,[],null,null,0);error.Text="已復原上次標籤套用";undoReview.Visibility=Visibility.Collapsed;}catch(Exception e){error.Text=e.Message;}};footer.Children.Add(undoReview);footer.Children.Add(IconButton("back",T("復原變更","Revert changes"),()=>_=LoadSelection()));save=IconButton("save",T("儲存標籤","Save tags"),async()=>await Save(),true);save.Name="SaveTags";footer.Children.Add(save);DockPanel.SetDock(footer,Dock.Bottom);root.Children.Add(footer);error.Foreground=Brush("#FF7777");error.TextWrapping=TextWrapping.Wrap;DockPanel.SetDock(error,Dock.Bottom);root.Children.Add(error);
+        var footer=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right};footer.Children.Add(rename);undoReview.Visibility=Visibility.Collapsed;undoReview.Click+=async(_,_)=>{if(lastUndo is null||undoSong is null)return;try{preview.Session.StopIfFile(undoSong.FilePath);await lastUndo.Restore(store,undoSong);engine.ReloadEditedJobs([undoSong.Id]);await ReviewApplied(undoSong,[],null,null,0);error.Text="已復原上次標籤套用";undoReview.Visibility=Visibility.Collapsed;}catch(Exception e){error.Text=e.Message;}};footer.Children.Add(undoReview);footer.Children.Add(IconButton("back",T("復原變更","Revert changes"),()=>_=LoadSelection()));save=IconButton("save",T("儲存標籤","Save tags"),async()=>await Save(),true);save.Name="SaveTags";footer.Children.Add(save);DockPanel.SetDock(footer,Dock.Bottom);root.Children.Add(footer);error.Foreground=Brush("#FF7777");error.TextWrapping=TextWrapping.Wrap;DockPanel.SetDock(error,Dock.Bottom);root.Children.Add(error);
         var grid=new Grid();grid.ColumnDefinitions.Add(new(){Width=new GridLength(300)});grid.ColumnDefinitions.Add(new());
         var list=new ScrollViewer{Content=songList,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};list.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)]=owner.FindResource("SlimScrollBar");grid.Children.Add(Card(list,10));
         var editor=new StackPanel();var upper=new DockPanel();DockPanel.SetDock(state,Dock.Right);upper.Children.Add(state);upper.Children.Add(Text(T("歌曲資料","Song details"),22));editor.Children.Add(upper);fileLocation.SetResourceReference(TextBlock.ForegroundProperty,"Muted");editor.Children.Add(fileLocation);
@@ -47,7 +50,7 @@ public sealed class TagEditorView : UserControl
         var more=new StackPanel();more.Children.Add(Text(T("自訂 ID3 Frame（Base64 JSON）；未改動嘅標籤會保留。","Custom ID3 frames (Base64 JSON); unchanged tags are preserved."),12));more.Children.Add(raw);form.Children.Add(new Expander{Header=T("更多標籤","More tags"),Content=more,Margin=new Thickness(2,12,2,0)});Grid.SetColumn(form,1);body.Children.Add(form);editor.Children.Add(body);
         body.SizeChanged+=(_,_)=>{var narrow=body.ActualWidth<650;body.ColumnDefinitions[0].Width=narrow?new GridLength(1,GridUnitType.Star):new GridLength(245);body.ColumnDefinitions[1].Width=narrow?new GridLength(0):new GridLength(1,GridUnitType.Star);Grid.SetColumn(form,narrow?0:1);Grid.SetRow(form,narrow?1:0);};var scroll=new ScrollViewer{Content=editor,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};scroll.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)]=owner.FindResource("SlimScrollBar");var card=Card(scroll,16);Grid.SetColumn(card,1);grid.Children.Add(card);root.Children.Add(grid);Content=root;
         rename.Checked+=(_,_)=>Changed();rename.Unchecked+=(_,_)=>Changed();AllowDrop=true;DragOver+=(_,e)=>{if(e.Handled)return;e.Effects=!Busy&&HasCoverData(e.Data)?DragDropEffects.Copy:DragDropEffects.None;e.Handled=true;};Drop+=async(_,e)=>{if(e.Handled||Busy)return;e.Handled=true;if(e.Data.GetData(DataFormats.FileDrop) is string[] paths&&paths.Any(p=>Directory.Exists(p)||Path.GetExtension(p).Equals(".mp3",StringComparison.OrdinalIgnoreCase)))await Import(paths);else if(HasCoverData(e.Data))await ReadCoverData(e.Data);};search.TextChanged+=(_,_)=>Rows();raw.TextChanged+=(_,_)=>{if(!loading)Changed();};
-        Unloaded+=(_,_)=>{coverRead?.Cancel();preview.Stop();};Loaded+=(_,_)=>Typography(this,engine.Settings.TextScale);
+        Unloaded+=(_,_)=>{coverRead?.Cancel();};Loaded+=(_,_)=>Typography(this,engine.Settings.TextScale);
         Rows();_=RestoreLibrary();
     }
     async Task RestoreLibrary()
@@ -58,7 +61,7 @@ public sealed class TagEditorView : UserControl
             var sources=store.TagLibrarySources();
             var result=await Task.Run(()=>TagLibrary.Read(sources));
             foreach(var song in result.Songs)MergeSong(song,true);
-            SortSongs();if(selected.Count==0&&songs.Count>0)selected.Add(songs[0].Id);
+            SortSongs();if(selected.Count==0&&songs.Count>0)selected.Add((songs.FirstOrDefault(j=>preview.Session.IsFile(j.FilePath))??songs[0]).Id);
             Rows();await LoadSelection();ShowUnavailable(result);
             _=LoadThumbnails();
         }
@@ -107,7 +110,7 @@ public sealed class TagEditorView : UserControl
         loading=true;IsEnabled=false;error.Text="";
         try
         {
-            preview.Stop();delta.Clear();covers=null;raw.Text="{}";
+            delta.Clear();covers=null;raw.Text="{}";
             current=songs.FirstOrDefault(j=>selected.Contains(j.Id));preview.SetFile(current?.FilePath);
             fileLocation.Text=current?.FilePath??"";fileLocation.ToolTip=fileLocation.Text;
             foreach(var (id,f) in fields){f.Text="";baseline[id]="";f.ToolTip=null;}
@@ -141,7 +144,6 @@ public sealed class TagEditorView : UserControl
     }
     async void ChooseCover(){try{var d=new Microsoft.Win32.OpenFileDialog{Filter="Images|*.jpg;*.jpeg;*.jfif;*.png;*.bmp;*.gif;*.tif;*.tiff;*.webp;*.avif"};if(d.ShowDialog(owner)==true){var data=new System.Windows.DataObject(DataFormats.FileDrop,new[]{d.FileName});await ReadCoverData(data);}}catch(Exception e){error.Text=e.Message;}}
     async void PasteCover(){for(int attempt=0;attempt<3;attempt++)try{var data=System.Windows.Clipboard.GetDataObject();if(data is null)error.Text="剪貼簿沒有圖片。請先複製圖片或圖片檔案。";else await ReadCoverData(data);return;}catch(System.Runtime.InteropServices.COMException){if(attempt==2)error.Text="剪貼簿暫時被其他程式佔用，請稍後再試。";else await Task.Delay(100);}catch(Exception e){error.Text=e.Message;return;}}
-    public void StopPreview()=>preview.Stop();
     async void Pick(bool folder){if(folder){var d=new Microsoft.Win32.OpenFolderDialog();if(d.ShowDialog(owner)==true)await Import([d.FolderName]);}else{var d=new Microsoft.Win32.OpenFileDialog{Filter="MP3|*.mp3",Multiselect=true};if(d.ShowDialog(owner)==true)await Import(d.FileNames);}}
     // Download history and folder imports describe files, not separate editor rows.
     // Preserve the existing job ID and download provenance when refreshing its tags.

@@ -12,7 +12,7 @@ namespace Omni.Windows;
 public sealed class AcoustIdReviewView:UserControl
 {
     readonly DownloadJob song;readonly Downloader engine;readonly Store store;readonly Action<Dictionary<string,string>?,Cover?,TagReviewUndo?,int> leave;
-    readonly MusicMetadata service;readonly DockPanel root=new(){Margin=new Thickness(18)};
+    readonly Window owner;readonly MusicMetadata service;readonly DockPanel root=new(){Margin=new Thickness(18)};
     readonly TextBlock status=Text("正在分析音訊指紋…",18),count=Text("已選擇 0 個變更"),detail=Text("",12);
     readonly StackPanel candidateList=new(),rows=new(),art=new();readonly Grid body=new();readonly ProgressBar progress=new(){Height=4,IsIndeterminate=true};
     readonly CheckBox keepUndo=new(){Content="套用後保留復原記錄",IsChecked=true};readonly Button apply;
@@ -21,7 +21,7 @@ public sealed class AcoustIdReviewView:UserControl
     public bool Writing=>writing;
     public string TrackId=>song.Id;
     public AcoustIdReviewView(Window owner,DownloadJob song,Downloader engine,Store store,Action<Dictionary<string,string>?,Cover?,TagReviewUndo?,int> leave,MusicMetadata? metadata=null){
-        service=metadata??new();this.song=song;this.engine=engine;this.store=store;this.leave=leave;Resources=owner.Resources;Background=owner.Background;FontSize=14;
+        this.owner=owner;service=metadata??new();this.song=song;this.engine=engine;this.store=store;this.leave=leave;Resources=owner.Resources;Background=owner.Background;FontSize=14;
         var header=new StackPanel();var brand=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,0,8)};brand.Children.Add(new Image{Source=new BitmapImage(new Uri("pack://application:,,,/App;component/Assets/brand.png")),Width=30,Height=30});brand.Children.Add(Text("  全能影音下載器",17));header.Children.Add(brand);var nav=new DockPanel();nav.Children.Add(IconButton("back","返回標籤編輯",Back));var title=Text("AcoustID 音訊辨識",27);title.HorizontalAlignment=HorizontalAlignment.Center;nav.Children.Add(title);header.Children.Add(nav);
         header.Children.Add(Text("辨識結果",25));header.Children.Add(Text("比較目前標籤與線上資料，選擇要匯入的項目",14));
         var info=new StackPanel{Margin=new Thickness(8)};info.Children.Add(Text(Path.GetFileName(song.FilePath)??song.Title,18));info.Children.Add(Text($"{song.Duration?.ToString("0")??"—"} 秒 · MP3 · {song.AudioKbps} kbps   |   AcoustID + MusicBrainz",13));info.Children.Add(status);info.Children.Add(progress);var summary=new DockPanel();summary.Children.Add(headerArt);summary.Children.Add(info);header.Children.Add(Card(summary,8));DockPanel.SetDock(header,Dock.Top);root.Children.Add(header);
@@ -66,5 +66,5 @@ public sealed class AcoustIdReviewView:UserControl
         var keep=new RadioButton{Content="保留目前封面",IsChecked=!useCover,GroupName="cover",Margin=new Thickness(0,10,0,8)};var replace=new RadioButton{Content="使用建議封面",IsChecked=useCover,IsEnabled=proposed?.Cover is not null,GroupName="cover"};keep.SetResourceReference(Control.ForegroundProperty,"Text");replace.SetResourceReference(Control.ForegroundProperty,"Text");keep.Checked+=(_,_)=>{useCover=false;UpdateCount();};replace.Checked+=(_,_)=>{useCover=true;UpdateCount();};art.Children.Add(keep);art.Children.Add(replace);
     }
     void UpdateCount(){var n=checks.Count(p=>p.Value.IsChecked==true)+(useCover?1:0);count.Text=$"已選擇 {n} 個變更  ";apply.IsEnabled=!writing&&proposed is not null&&n>0;}
-    async Task Apply(){if(writing||proposed is null)return;var values=checks.Where(p=>p.Value.IsChecked==true).ToDictionary(p=>p.Key,p=>proposed.Tags![p.Key]);var cover=useCover?proposed.Cover:null;if(values.Count==0&&cover is null)return;writing=true;root.IsEnabled=false;try{var keep=keepUndo.IsChecked==true;var undo=await Task.Run(()=>TagReviewUndo.Apply(store,song,values,cover,keep,originalHash));engine.ReloadEditedJobs([song.Id]);closed=true;scan?.Cancel();resolve?.Cancel();leave(values,cover,undo,values.Count+(cover is null?0:1));}catch(Exception e){status.Text="標籤寫入失敗："+e.Message;}finally{writing=false;root.IsEnabled=true;UpdateCount();}}
+    async Task Apply(){if(writing||proposed is null)return;var values=checks.Where(p=>p.Value.IsChecked==true).ToDictionary(p=>p.Key,p=>proposed.Tags![p.Key]);var cover=useCover?proposed.Cover:null;if(values.Count==0&&cover is null)return;writing=true;root.IsEnabled=false;try{(owner as MainWindow)?.PreviewSession.StopIfFile(song.FilePath);var keep=keepUndo.IsChecked==true;var undo=await Task.Run(()=>TagReviewUndo.Apply(store,song,values,cover,keep,originalHash));engine.ReloadEditedJobs([song.Id]);closed=true;scan?.Cancel();resolve?.Cancel();leave(values,cover,undo,values.Count+(cover is null?0:1));}catch(Exception e){status.Text="標籤寫入失敗："+e.Message;}finally{writing=false;root.IsEnabled=true;UpdateCount();}}
 }

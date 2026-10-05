@@ -10,9 +10,10 @@ namespace Omni.Windows;
 public partial class MainWindow : Window
 {
     readonly Downloader engine; readonly Store store; readonly DispatcherTimer timer; readonly HashSet<string> choices = []; bool history, tagsPage, recentSelection, failures, collapsed; DownloadMode mode = DownloadMode.Mp4; string groupSignature = "";
+    public AudioPreviewSession PreviewSession {get;}=new();
     public Func<MusicMetadata> MusicServiceFactory {get;set;}=()=>new();
     public string ActiveView {get;private set;}="main"; AcoustIdReviewView? reviewView;
-    public void OpenAcoustIdReview(TagEditorView editor,DownloadJob job){if(reviewView is not null)return;editor.StopPreview();var previous=Content;ActiveView="acoustid-review";reviewView=new AcoustIdReviewView(this,job,engine,store,async(fields,cover,undo,count)=>{Content=previous;reviewView=null;ActiveView="tags";if(fields is not null)await editor.ReviewApplied(job,fields,cover,undo,count);},MusicServiceFactory());Content=reviewView;}
+    public void OpenAcoustIdReview(TagEditorView editor,DownloadJob job){if(reviewView is not null)return;var previous=Content;ActiveView="acoustid-review";reviewView=new AcoustIdReviewView(this,job,engine,store,async(fields,cover,undo,count)=>{Content=previous;reviewView=null;ActiveView="tags";if(fields is not null)await editor.ReviewApplied(job,fields,cover,undo,count);},MusicServiceFactory());Content=reviewView;}
     TagEditorView? tagEditorView; SettingsView? settingsView; LibraryView? libraryView; string lastClipboard="";
     string? thumbnailUrl;
     bool refreshing;
@@ -27,8 +28,8 @@ public partial class MainWindow : Window
         this.engine = engine; this.store = store; InitializeComponent(); UiKit.Apply(this,engine.Settings); SetMode(engine.Settings.DefaultType=="audio"?DownloadMode.Mp3:DownloadMode.Mp4);
         engine.ResolveMusic=(choices,ct)=>Dispatcher.InvokeAsync(async()=>{Reveal();return await new MusicMatchWindow(this,choices).Ask(ct);}).Task.Unwrap();
         engine.NetworkPermitted=DesktopIntegration.NetworkAllowed;engine.ResolveDuplicate=ResolveDuplicate;engine.Completed+=j=>Dispatcher.BeginInvoke(()=>DesktopIntegration.Completion(j,engine.Settings));
-        Microsoft.Win32.SystemEvents.UserPreferenceChanged+=SystemThemeChanged;Closed+=(_,_)=>Microsoft.Win32.SystemEvents.UserPreferenceChanged-=SystemThemeChanged;
         timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) }; timer.Tick += (_, _) => Refresh(); timer.Start();
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged+=SystemThemeChanged;Closed+=(_,_)=>{Microsoft.Win32.SystemEvents.UserPreferenceChanged-=SystemThemeChanged;timer.Stop();PreviewSession.Dispose();};
         Closing += async (_, e) => { if (!AllowClose) { e.Cancel = true;if(reviewView is not null){reviewView.Back();return;}if(closePrompt||tagEditorView?.Busy==true)return;closePrompt=true;try{if(!await LeaveSettings())return;ShowDownloads();if(engine.Settings.CloseToTray){ShowInTaskbar=false;Hide();}else await ExitApplication();}finally{closePrompt=false;} } };
         SizeChanged += (_, _) => { DetailColumn.Width = new GridLength(ActualWidth < 1100 ? 320 : 380); };
         UpdateNavigation();Loaded+=(_,_)=>ApplyLanguage();
@@ -211,7 +212,7 @@ public partial class MainWindow : Window
         else FolderClick(s, e);
     }
     async void SettingsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;var previousPage=PageHost.Content;var previousTags=tagEditorView;var previousLibrary=libraryView;tagEditorView=null;libraryView=null;settingsView=new SettingsView(this,engine,()=>{UiKit.Apply(this,engine.Settings);UpdateNavigation();SetMode(mode);ApplyLanguage();});settingsView.Back=async()=>{if(await LeaveSettings()){if(previousPage is null)ShowDownloads();else{RestoreMenu();tagEditorView=previousTags;libraryView=previousLibrary;PageHost.Content=previousPage;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;UiKit.Typography(this,engine.Settings.TextScale);}}};MainNav.Visibility=Visibility.Collapsed;NavColumn.Width=new GridLength(0);Grid.SetColumn(PageHost,0);Grid.SetColumnSpan(PageHost,3);PageHost.Content=settingsView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
-    async Task<bool> LeaveSettings(){if(tagEditorView is not null&&!await tagEditorView.CanLeave())return false;if(settingsView is not null&&!await settingsView.CanLeave())return false;tagEditorView?.StopPreview();settingsView=null;return true;}
+    async Task<bool> LeaveSettings(){if(tagEditorView is not null&&!await tagEditorView.CanLeave())return false;if(settingsView is not null&&!await settingsView.CanLeave())return false;settingsView=null;return true;}
     void RestoreMenu(){MainNav.Visibility=Visibility.Visible;Grid.SetColumn(PageHost,1);Grid.SetColumnSpan(PageHost,2);UpdateNavigation();}
     async Task OpenTagSelection(DownloadJob[] jobs){if(await LeaveSettings())ShowTagEditor(jobs);}
     void ShowTagEditor(DownloadJob[]? jobs=null){RestoreMenu();settingsView=null;libraryView=null;tagEditorView=new TagEditorView(this,engine,store,jobs);PageHost.Content=tagEditorView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}
