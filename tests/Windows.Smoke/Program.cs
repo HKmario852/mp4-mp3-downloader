@@ -12,15 +12,16 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if(args.Length==0){var root=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","..","..","..",".."));Directory.SetCurrentDirectory(root);args=[Path.Combine(root,"artifacts","qa-0.2.16-interactive"),Path.Combine(root,"artifacts","OmniDownloader-windows-x64"),"--player-interactive"];}
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--library-persistence-regression") || args.Contains("--metadata-read-regression") || args.Contains("--folder-import-regression") || args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
+        if (args.Contains("--player-regression") || args.Contains("--player-interactive") || args.Contains("--library-persistence-regression") || args.Contains("--metadata-read-regression") || args.Contains("--folder-import-regression") || args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
                 var path=Path.Combine(output,id+"."+mode.ToString().ToLowerInvariant());
-                if(mode==DownloadMode.Mp3) ProcessRunner.Run(Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),["-y","-f","lavfi","-i","sine=frequency=440:duration=20","-codec:a","libmp3lame","-b:a","320k",path],null,CancellationToken.None).GetAwaiter().GetResult();
+                if(mode==DownloadMode.Mp3) ProcessRunner.Run(Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),["-y","-f","lavfi","-i",args.Contains("--player-interactive")?"sine=frequency=440:duration=180":"sine=frequency=440:duration=20","-af",args.Any(a=>a.StartsWith("--player-"))?"volume=0":"anull","-codec:a","libmp3lame","-b:a","320k",path],null,CancellationToken.None).GetAwaiter().GetResult();
                 else File.WriteAllText(path,"selection fixture");
                 store.Save(new DownloadJob{Id=id,RequestId=id,Title=id,Mode=mode,State=JobState.Completed,FilePath=path,Url="https://example.org/"+id,Thumbnail=new Uri(Path.GetFullPath(Path.Combine(args[1],"..","..","src","Windows","Assets","brand.png"))).AbsoluteUri,TotalBytes=new FileInfo(path).Length,Artist="Mario",Duration=2,AudioKbps=320,CompletedAt=DateTimeOffset.UtcNow.AddMinutes(args.Contains("--v27-regression")&&id=="music-a"?-10:0)});
             }
@@ -29,6 +30,7 @@ public static class Program
         if (args.Contains("--update-regression")) { store.Save(new DownloadJob{Id="paused",Title="暫停測試",State=JobState.Paused}); store.Save(new DownloadJob{Id="failed",Title="失敗測試",State=JobState.Failed}); }
         var engine = new Downloader(store, Path.GetFullPath(args[1]), Path.Combine(output, "smoke-work"));
         var window = new MainWindow(engine, store) { AllowClose = true, ShowInTaskbar = false, Left = -10000, Top = -10000, WindowStartupLocation = WindowStartupLocation.Manual };
+        if(args.Contains("--player-interactive")){window.ShowInTaskbar=true;window.Title="全能影音下載器 — 播放器測試";window.Left=50;window.Top=30;window.Width=1440;window.Height=900;window.Closed+=(_,_)=>app.Shutdown();}
         app.DispatcherUnhandledException += (_, e) => { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.Exception.ToString()); e.Handled = true; app.Shutdown(1); };
         bool exercised = false;
         window.ContentRendered += async (_, _) =>
@@ -38,6 +40,7 @@ public static class Program
             {
                 await app.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 Capture(window, Path.Combine(output, "windows-empty.png"));
+                if(args.Contains("--player-regression")||args.Contains("--player-interactive")){await CheckPlayer(window,engine,store,app,output,args.Contains("--player-interactive"));await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--recording-smoke")){
                     var result=await new MusicMetadata().Recording("cb39b5d8-ebb8-4bad-9f17-9d952108ecb7","885b1ba8-65f0-476b-939c-704db7a696de",CancellationToken.None);
                     File.WriteAllText(Path.Combine(output,"recording-live.json"),Json.Encode(new{result.State,result.Title,result.Artist,result.Album,result.Tags,coverBytes=result.Cover?.Bytes.Length,dimensions=result.Cover is null?null:(object)AlbumArtwork.Dimensions(result.Cover.Bytes)}));
@@ -80,6 +83,42 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckPlayer(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output,bool interactive)
+    {
+        void Check(bool ok,string message){if(!ok)throw new Exception(message);}
+        async Task Idle()=>await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        async Task Wait(Func<bool> condition){for(var i=0;i<200&&!condition();i++)await Task.Delay(50);Check(condition(),"Timed out waiting for the native audio player");}
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        void Nav(string name)=>((Button)window.FindName(name)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        async Task<TagEditorView> Open(){Nav("TagsNav");await Idle();var view=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;await Wait(()=>!view.Busy);await (Task)typeof(TagEditorView).GetMethod("SelectSongs",flags)!.Invoke(view,new object[]{new[]{"music-a"}})!;return view;}
+        AudioPreview Preview(TagEditorView view)=>Descendants(view).OfType<AudioPreview>().Single();
+        MediaPlayer Player(AudioPreview view)=>(MediaPlayer)typeof(AudioPreview).GetField("player",flags)!.GetValue(view)!;
+        Slider Seek(AudioPreview view)=>Descendants(view).OfType<Slider>().Single(s=>s.Name=="PreviewPosition");
+        Slider Volume(AudioPreview view)=>Descendants(view).OfType<Slider>().Single(s=>s.Name=="PreviewVolume");
+        void Toggle(AudioPreview view)=>Descendants(view).OfType<Button>().Single(b=>b.Name=="PreviewPlayback").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        bool Playing(AudioPreview view)=>(bool)typeof(AudioPreview).GetField("playing",flags)!.GetValue(view)!;
+        bool Timing(AudioPreview view)=>((DispatcherTimer)typeof(AudioPreview).GetField("timer",flags)!.GetValue(view)!).IsEnabled;
+        async Task Start(AudioPreview view){Toggle(view);await Wait(()=>Seek(view).IsEnabled&&Player(view).Position.TotalSeconds>.1);Check(Math.Abs(Player(view).Volume-Volume(view).Value)<.001,"Opening audio must respect the selected volume");}
+        var editor=await Open();var preview=Preview(editor);
+        var hashes=await Task.WhenAll(store.Load().Where(j=>j.Extension=="mp3").Select(j=>TagReview.Hash(j.FilePath!)));
+        if(interactive)
+        {
+            while(window.IsLoaded){var current=((ContentControl)window.FindName("PageHost")).Content as TagEditorView;var p=current is null?preview:Preview(current);File.AppendAllText(Path.Combine(output,"player-live-state-"+Environment.ProcessId+".jsonl"),Json.Encode(new{playing=Playing(p),timer=Timing(p),source=Player(p).Source?.ToString(),position=Player(p).Position.TotalSeconds,seek=Seek(p).Value,duration=Seek(p).Maximum,volume=Player(p).Volume,visible=p.IsVisible})+Environment.NewLine);await Task.Delay(1000);}return;
+        }
+        await Start(preview);Check(Math.Abs(Seek(preview).Maximum-20)<.2,"Seek range must use decoded duration instead of a 0..1 placeholder");
+        Toggle(preview);Seek(preview).Value=12;await Task.Delay(250);Check(Math.Abs(Player(preview).Position.TotalSeconds-12)<.5,"Seeking while paused must jump to the chosen time");Check(!Playing(preview)&&!Timing(preview),"Seeking must preserve pause state");
+        Volume(preview).Value=1;Volume(preview).Value=.5;Check(Math.Abs(Player(preview).Volume-.5)<.001,"Volume must change directly from 100 to 50 percent");
+        var mute=Descendants(preview).OfType<Button>().Single(b=>b.Name=="PreviewMute");mute.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(Player(preview).Volume==0,"Mute must silence the preview");mute.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Check(Player(preview).Volume==.5,"Unmute must restore the prior level");
+        Seek(preview).Value=Seek(preview).Maximum-.2;Toggle(preview);await Wait(()=>!Playing(preview));Check(Seek(preview).Value<.1&&!Timing(preview),"End of track must reset the play button, timer and position");
+        await Start(preview);Nav("QueueNav");await Idle();Check(Player(preview).Source is null&&!Playing(preview)&&!Timing(preview),"Leaving for Downloads must close the audio stream");
+        editor=await Open();preview=Preview(editor);await Start(preview);Nav("SettingsNav");await Idle();Check(Player(preview).Source is null&&!Playing(preview),"Settings navigation must stop playback");var settings=(SettingsView)((ContentControl)window.FindName("PageHost")).Content;settings.Back!();await Idle();Check(ReferenceEquals(editor,((ContentControl)window.FindName("PageHost")).Content)&&!Playing(preview),"Returning from Settings must leave playback stopped");
+        await Start(preview);window.MusicServiceFactory=()=>new MusicMetadata(new System.Net.Http.HttpClient(new ReviewHandler(File.ReadAllBytes("src/Windows/Assets/brand.png"))));window.OpenAcoustIdReview(editor,store.Load().Single(j=>j.Id=="music-a"));await Idle();Check(Player(preview).Source is null&&!Playing(preview),"Scan review navigation must stop playback");((AcoustIdReviewView)window.Content).Back();await Idle();
+        await Start(preview);await (Task)typeof(TagEditorView).GetMethod("SelectSongs",flags)!.Invoke(editor,new object[]{new[]{"music-b"}})!;Check(Player(preview).Source is null&&!Playing(preview),"Selecting another song must stop the old preview");
+        var volumeTrack=(System.Windows.Controls.Primitives.Track)Volume(preview).Template.FindName("PART_Track",Volume(preview));Volume(preview).Value=.5;await Idle();Check(Math.Abs(volumeTrack.Value-.5)<.001&&volumeTrack.Minimum==0&&volumeTrack.Maximum==1,"The rendered track must follow volume range and value");
+        window.UpdateLayout();Capture(window,Path.Combine(output,"player-preview.png"));window.Width=1050;await Idle();Capture(window,Path.Combine(output,"player-narrow.png"));
+        Check(hashes.SequenceEqual(await Task.WhenAll(store.Load().Where(j=>j.Extension=="mp3").Select(j=>TagReview.Hash(j.FilePath!)))),"Preview controls must not modify MP3 files");
+        File.WriteAllText(Path.Combine(output,"player-checks.json"),Json.Encode(new{passed=true,checks=new[]{"native MP3 playback","decoded seek range","paused seek","volume 100 to 50","mute and restore","end of track","download navigation stop","settings stop and return","scan navigation stop","song selection stop","rendered track binding","no MP3 changes"}}));
     }
     static async Task CheckLibraryPersistence(MainWindow window,Downloader engine,Store store,string output,string[] args)
     {
