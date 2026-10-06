@@ -6,7 +6,7 @@ The app stores preferences and download history locally. It does not upload your
 
 - Browser authentication forwarding requires consent in the extension. Credentials are sent to the local Windows downloader using Native Messaging and are not put in custom URLs. They expire when the application process ends.
 - 自訂 Cookie 檔案包含登入權限，請勿分享。只供使用者明確選擇的 YouTube 下載使用。
-- MusicBrainz is optional. When enabled, the song title, artist and duration are used to find metadata; artwork is downloaded from Cover Art Archive and the source thumbnail server.
+- Windows defaults to background MP3 metadata lookup after download; it can run before download or be disabled. Android automatic tag matching defaults to off, but its missing-artwork fallback can still contact MusicBrainz. Queries use titles, artists, duration or IDs; artwork is fetched from its source or Cover Art Archive. Turning off tag matching does not disable all artwork-related network requests.
 - Clipboard monitoring is off by default. When enabled, the foreground app checks for HTTPS links and offers/fills them; it never starts a download automatically. Android restricts background clipboard access.
 - Update checks contact the configured GitHub repository. Installation and restart require confirmation. Standard network services receive your IP address when contacted.
 - Logs stay local unless you choose to export/share them. Network URLs and credential-looking strings are redacted from diagnostics; review exported files before sharing.
