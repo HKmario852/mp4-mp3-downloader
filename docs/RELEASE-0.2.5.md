@@ -1,4 +1,4 @@
-# mp4/mp3 downloader 0.2.5
+# MP4/MP3 downloader 0.2.5
 
 - Windows／Android 新增完整 AcoustID 核對頁：使用同一應用程式視窗，隱藏普通側邊欄，保留原生視窗控制。
 - 顯示候選錄音與專輯版本、AcoustID 指紋相似度、目前值／辨識結果比較，以及新舊封面。分數不是專輯版本或標籤準確率。

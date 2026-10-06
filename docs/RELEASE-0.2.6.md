@@ -1,4 +1,4 @@
-# mp4/mp3 downloader 0.2.6
+# MP4/MP3 downloader 0.2.6
 
 Windows 版改善貼上連結後的等待時間與 MP3 標籤處理方式。
 

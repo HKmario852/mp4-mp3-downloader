@@ -1,4 +1,4 @@
-# mp4/mp3 downloader 0.2.17
+# MP4/MP3 downloader 0.2.17
 
 修正 Windows 試聽播放器在切換頁面時停止的行為。歌曲現在會繼續播放，可自由前往新增下載、下載中、已下載、設定及 AcoustID 核對頁面。
 

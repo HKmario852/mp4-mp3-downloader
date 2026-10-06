@@ -1,4 +1,4 @@
-# mp4/mp3 downloader 0.2.7
+# MP4/MP3 downloader 0.2.7
 
 Windows 與 Android 的 MP3 封面只會嵌入音訊標籤，下載目的地不再另外產生 `cover.jpg` 或以歌曲名稱命名的 JPG。影片保留縮圖的選項維持有效。手動在標籤編輯器更換封面亦只會更新 MP3 內的封面。
 

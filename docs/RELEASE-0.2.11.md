@@ -1,4 +1,4 @@
-# mp4/mp3 downloader 0.2.11
+# MP4/MP3 downloader 0.2.11
 
 修正 Windows 標籤編輯的封面拖放與貼上：除了本機 PNG／JPEG 等圖片，現在亦能讀取 Chrome／Brave 傳送的圖片 HTML、圖片網址、虛擬圖片檔及 WebP 圖片。拖放到現有封面上會更新預覽；拖到編輯區其他位置亦會套用封面，不會被誤當成 MP3 匯入並清空歌曲選取。
 

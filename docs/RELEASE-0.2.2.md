@@ -1,4 +1,4 @@
-# mp4/mp3 downloader 0.2.2
+# MP4/MP3 downloader 0.2.2
 
 - Windows / Android：歌曲整行選取；多選兩項以上才顯示歌曲勾選框。
 - Windows 支援 Ctrl / Shift 多選；Android 長按另一首歌曲加入多選。

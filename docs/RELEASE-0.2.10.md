@@ -1,4 +1,4 @@
-# mp4/mp3 downloader 0.2.10
+# MP4/MP3 downloader 0.2.10
 
 Windows 和 Android 的連結輸入框、下載任務搜尋、已下載搜尋及標籤編輯搜尋，現在有在輸入文字後顯示的清除 X。MusicBrainz 查找欄位亦可一按清空。
 

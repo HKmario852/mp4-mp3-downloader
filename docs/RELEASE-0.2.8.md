@@ -1,4 +1,4 @@
-# mp4/mp3 downloader 0.2.8
+# MP4/MP3 downloader 0.2.8
 
 Android 套件內置的 yt-dlp 更新至官方穩定版 2026.08.19。從舊版本升級時，App 會替換已抽出的舊版引擎；如果使用者另外安裝了更新的引擎，則不會降級。Android 下載失敗或分析連結遇到 YouTube 年齡限制時，會顯示具體登入及 Cookie 步驟。
 

@@ -64,7 +64,7 @@ Title、URL、fileName、Artist、Album 各欄位大小寫不敏感；標準空�
 
 `Models.cs` / `Models.kt` 包含 task、group、history、preferences、request/ACK。下載偏好在入列時快照品質；Cookies 與 Session 權限不寫歷史。SQLite 保存狀態；程序重啟將未完成工作改為 Paused。
 
-MP4：`bv*[height<=?H][ext=mp4]+ba[ext=m4a]/b[height<=?H][ext=mp4]/bv*[height<=?H]+ba/b[height<=?H]`，merge/remux mp4。問號容許 metadata 未提供解像度的直接影片；無法在未提供尺寸時保證來源低於上限，實際輸出以檢查為準。
+MP4：`bv*[height<=?H][ext=mp4]+ba[ext=m4a]/b[height<=?H][ext=mp4]/bv*[height<=?H]+ba/b[height<=?H]`，merge/remux MP4。問號容許 metadata 未提供解像度的直接影片；無法在未提供尺寸時保證來源低於上限，實際輸出以檢查為準。
 
 MP3：`-f bestaudio/best -x --audio-format mp3 --audio-quality 320k --postprocessor-args "ExtractAudio+ffmpeg_o:-ar 44100" --embed-metadata`。沒有 -ac；MP3 格式自身上限雙聲道，不能聲稱多聲道原封保留。44.1 kHz 避免低取樣率 MPEG-2 MP3 將 320 kbps 限制成 160 kbps；不會改善來源音質。
 
