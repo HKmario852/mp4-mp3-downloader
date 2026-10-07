@@ -77,7 +77,7 @@ $zip=Get-SafeAbsolute $ZipPath
 if($install -eq ([IO.Path]::GetPathRoot($install)).TrimEnd('\')){throw 'Cannot update a volume root.'}
 Assert-NoReparse $install
 Assert-NoReparse $zip
-if(-not(Test-Path -LiteralPath (Join-Path $install 'App.exe') -PathType Leaf)){throw 'App.exe was not found in InstallPath.'}
+if(-not(Test-Path -LiteralPath (Join-Path $install 'OMNI.exe') -PathType Leaf) -and -not(Test-Path -LiteralPath (Join-Path $install 'App.exe') -PathType Leaf)){throw 'OMNI.exe or the legacy App.exe was not found in InstallPath.'}
 $hashStream=[IO.File]::OpenRead($zip)
 $sha=[Security.Cryptography.SHA256]::Create()
 try{$hash=[BitConverter]::ToString($sha.ComputeHash($hashStream)).Replace('-','')}finally{$hashStream.Dispose();$sha.Dispose()}
@@ -107,7 +107,8 @@ try {
             $expanded+=$entry.Length;if($expanded -gt 4GB){throw 'Expanded archive exceeds 4 GB.'}
             $files[$entry.Name]=$entry
         }
-        foreach($required in @('App.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe','updater.ps1')){if(-not $files.ContainsKey($required)){throw "Required release file missing: $required"}}
+        foreach($required in @('OMNI.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe','updater.ps1')){if(-not $files.ContainsKey($required)){throw "Required release file missing: $required"}}
+        if($files.ContainsKey('App.exe')){throw 'The release must use OMNI.exe, without a legacy App.exe.'}
         $arch=Get-Architecture
         foreach($entry in $files.Values | Where-Object{$_.Name -match '\.(exe|dll)$'}) {
             $memory=New-Object IO.MemoryStream
@@ -144,7 +145,8 @@ try {
     if($ValidateOnly){Write-Host 'SHA256, ZIP layout, and all PE architectures passed. No installed files changed.';return}
     $target=Get-Process -Id $AppPid -ErrorAction SilentlyContinue
     if($null -ne $target) {
-        if(-not [string]::Equals((Get-SafeAbsolute $target.Path),(Join-Path $install 'App.exe'),[StringComparison]::OrdinalIgnoreCase)){throw 'PID does not belong to InstallPath\App.exe.'}
+        $targetPath=Get-SafeAbsolute $target.Path
+        if(-not [string]::Equals($targetPath,(Join-Path $install 'OMNI.exe'),[StringComparison]::OrdinalIgnoreCase) -and -not [string]::Equals($targetPath,(Join-Path $install 'App.exe'),[StringComparison]::OrdinalIgnoreCase)){throw 'PID does not belong to the OMNI application in InstallPath.'}
         Write-Host 'Waiting for the application to exit. Choose Exit from its tray menu.'
         # No forced termination: the app shuts down children and checkpoints SQLite.
         $target.WaitForExit()
@@ -158,14 +160,19 @@ try {
         if((Get-StreamHash $handle) -ne $retained[$name]){throw "Retained file changed during update: $name"}
     }
     $sourceFiles=@(Get-ChildItem -LiteralPath $payload -File)
+    $legacy=Assert-Under (Join-Path $install 'App.exe') $install
     # Exclusive access preflight occurs before ANY installed file is changed.
     $handles=New-Object 'System.Collections.Generic.List[System.IO.FileStream]'
-    try {foreach($f in $sourceFiles){$dest=Join-Path $install $f.Name;if(Test-Path -LiteralPath $dest){Assert-NoReparse $dest;$handles.Add([IO.File]::Open($dest,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None))}}}
+    try {
+        foreach($f in $sourceFiles){$dest=Join-Path $install $f.Name;if(Test-Path -LiteralPath $dest){Assert-NoReparse $dest;$handles.Add([IO.File]::Open($dest,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None))}}
+        if(Test-Path -LiteralPath $legacy){Assert-NoReparse $legacy;$handles.Add([IO.File]::Open($legacy,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None))}
+    }
     finally{foreach($h in $handles){$h.Dispose()}}
     $data=Join-Path $install 'data'
     if(Test-Path -LiteralPath $data){Assert-NoReparse $data;Get-ChildItem -LiteralPath $data -Recurse -Force | ForEach-Object {if(($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'User data contains a reparse point.'}};Copy-Item -LiteralPath $data -Destination (Join-Path $backup 'data') -Recurse}
     # User data is never overwritten; full backup exists for recovery.
     foreach($f in $sourceFiles){$dest=Join-Path $install $f.Name;if(Test-Path -LiteralPath $dest){Copy-Item -LiteralPath $dest -Destination (Join-Path $backup $f.Name)}}
+    if(Test-Path -LiteralPath $legacy){Copy-Item -LiteralPath $legacy -Destination (Join-Path $backup 'App.exe')}
     $done=0
     foreach($f in $sourceFiles) {
         $dest=Assert-Under (Join-Path $install $f.Name) $install
@@ -174,11 +181,12 @@ try {
         $done++;Show-Bar $done $sourceFiles.Count 'Updating'
     }
     Write-Host ''
+    if(Test-Path -LiteralPath $legacy){$changed.Add('App.exe');Remove-Item -LiteralPath $legacy -Force}
     $success=$true
     Remove-Item -LiteralPath $zip -Force
     Write-Host 'Update complete. Settings and history were preserved.' -ForegroundColor Green
-    if($Restart){Start-Process -FilePath (Join-Path $install 'App.exe') -WorkingDirectory $install -WindowStyle Hidden}
-    elseif(-not $NoRestartPrompt){$answer=Read-Host 'Restart now? [Y/N]';if($answer -match '^[Yy]$'){Start-Process -FilePath (Join-Path $install 'App.exe') -WorkingDirectory $install}}
+    if($Restart){Start-Process -FilePath (Join-Path $install 'OMNI.exe') -WorkingDirectory $install -WindowStyle Hidden}
+    elseif(-not $NoRestartPrompt){$answer=Read-Host 'Restart now? [Y/N]';if($answer -match '^[Yy]$'){Start-Process -FilePath (Join-Path $install 'OMNI.exe') -WorkingDirectory $install -WindowStyle Hidden}}
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
     if(-not $success) {

@@ -41,12 +41,15 @@ Los paquetes están en **[la última versión](https://github.com/HKmario852/mp4
 
 | Plataforma | Requisitos | Instalación |
 | --- | --- | --- |
-| Windows | Windows 10 (2004 o posterior) u 11, x64 | Extrae el ZIP de Windows en una carpeta con permisos de escritura. Ejecuta `App.exe` y conserva juntos los archivos incluidos. |
+| Windows | Windows 10 (2004 o posterior) u 11, x64 | Extrae el ZIP de Windows en una carpeta con permisos de escritura. Ejecuta `OMNI.exe` y conserva juntos los archivos incluidos. |
 | Android | Android 8.0 o posterior (API 26) | Instala el APK universal de depuración. Elige una carpeta compartida para conservar las descargas al desinstalar. |
 | Extensión del navegador | Chrome / Brave en Windows | Carga la extensión descomprimida y conecta su ID en los ajustes de la aplicación. [Guía de conexión](../../docs/DEVELOPMENT.md#browser-connection). |
 
 > **Nota:**
 > El ejecutable de Windows no está firmado. Los paquetes de Android son compilaciones de depuración para pruebas; la verificación en dispositivos y de los servicios en segundo plano está incompleta.
+
+> [!NOTE]
+> Las versiones anteriores usan `App.exe`. Para la primera actualización al nuevo nombre, cierra la aplicación y extrae el paquete completo de Windows en la carpeta existente, conservando `data/` y `native-host.json`. Después, inicia `OMNI.exe`.
 
 ## Primeros pasos
 
@@ -65,7 +68,7 @@ cd mp4-mp3-downloader
 ./scripts/Build-Windows.ps1
 ```
 
-Resultado: `artifacts/windows-win-x64/App.exe`. El script descarga y verifica las herramientas multimedia incluidas. La aplicación publicada incorpora el entorno de ejecución de .NET.
+Resultado: `artifacts/windows-win-x64/OMNI.exe`. El script descarga y verifica las herramientas multimedia incluidas. La aplicación publicada incorpora el entorno de ejecución de .NET.
 
 Para Android también necesitas **JDK 21**, **Android SDK / build-tools 35**, **NDK 27.0.12077973** y **CMake 3.22.1**. Configura `JAVA_HOME` y `ANDROID_HOME`, y ejecuta:
 

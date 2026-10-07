@@ -8,7 +8,7 @@
 
 `window.blur` 監聽保留為喚醒提示，但只有 App ACK 才會顯示綠勾 1.5 秒。2 秒沒有失焦不能證明失敗；真正接收有 20 秒 UI 逾時，提示先查看 App，避免重複加入。Native Messaging 不依賴 Chromium 外部協定確認框；fallback 明確列為無登入憑證的 `ytdl://download?url=${encodeURIComponent(url)}&mode=...`，提示只有瀏覽器提供「一律允許」時才可勾選。
 
-`RegistryIntegration` 每次主實例冷啟動校正 `HKCU\Software\Classes\ytdl\shell\open\command` 為 `"App.exe完整路徑" --minimized "%1"`。不要求 UAC。App 資料夾移動後必須手動啟動一次才可自癒；失效的舊協定本身不能找到新路徑。
+`RegistryIntegration` 每次主實例冷啟動校正 `HKCU\Software\Classes\ytdl\shell\open\command` 為 `"OMNI.exe完整路徑" --minimized "%1"`。不要求 UAC。App 資料夾移動後必須手動啟動一次才可自癒；失效的舊協定本身不能找到新路徑。
 
 Mutex 保證單實例；Named Pipe 按 Windows SID + session 命名、限制目前使用者。接收 requestId 去重、先寫 SQLite 再 ACK。一般網址保持系統匣，`v` + `list` 存為 PendingChoice，主視窗嘗試聚焦、等待明確選擇，不倒數、不自動最小化。Windows 拒絕搶前景時改為工作列閃動，任務仍掛起。純 `/playlist?list=` 直接進入清單發現流程。
 
@@ -18,7 +18,7 @@ Windows：WPF / .NET 8，利用成熟 HWND、系統匣、COM Toast、Named Pipe 
 
 Windows 是深色三欄、紫藍漸層、左側純圖示收合、任務表格、最近下載、右側設定。Android 手機底部導航、卡片佇列；寬畫面改用 NavigationRail。通知無論前景或冷啟動均以 page=history 路由已下載；空間及下載範圍對話框是全域待處理狀態。
 
-Windows 發布根目錄：App.exe、Omni.NativeHost.exe、yt-dlp.exe、ffmpeg.exe、ffprobe.exe、deno.exe、updater.ps1、LICENSE、README.md、tool-versions.json。使用者資料獨立在 data/；無寫入權限時改用 LocalAppData。
+Windows 發布根目錄：OMNI.exe、Omni.NativeHost.exe、yt-dlp.exe、ffmpeg.exe、ffprobe.exe、deno.exe、updater.ps1、LICENSE、README.md、tool-versions.json。使用者資料獨立在 data/；無寫入權限時改用 LocalAppData。
 
 ## 3. 網路、通知及 Session
 

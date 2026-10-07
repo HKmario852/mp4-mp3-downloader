@@ -41,12 +41,15 @@ Get the packages from **[the latest release](https://github.com/HKmario852/mp4-m
 
 | Platform | Requirements | Install |
 | --- | --- | --- |
-| Windows | Windows 10 (2004+) or 11, x64 | Extract the Windows ZIP into a writable folder. Run `App.exe`; keep the bundled files together. |
+| Windows | Windows 10 (2004+) or 11, x64 | Extract the Windows ZIP into a writable folder. Run `OMNI.exe`; keep the bundled files together. |
 | Android | Android 8.0+ (API 26) | Install the universal debug APK. Choose a shared folder to keep downloads after uninstalling. |
 | Browser extension | Chrome / Brave on Windows | Load the unpacked extension and connect its ID in app settings. [Setup guide](docs/DEVELOPMENT.md#browser-connection). |
 
 > **Note:**
 > The Windows executable is unsigned. Android packages are debug builds for testing; device and background-service verification is incomplete.
+
+> [!NOTE]
+> Older releases use `App.exe`. For the first update to the new name, exit the app and extract the complete Windows package into your existing folder, keeping `data/` and `native-host.json`. Then start `OMNI.exe`.
 
 ## Quick start
 
@@ -65,7 +68,7 @@ cd mp4-mp3-downloader
 ./scripts/Build-Windows.ps1
 ```
 
-Output: `artifacts/windows-win-x64/App.exe`. The script downloads and verifies the bundled media tools; the published app includes its .NET runtime.
+Output: `artifacts/windows-win-x64/OMNI.exe`. The script downloads and verifies the bundled media tools; the published app includes its .NET runtime.
 
 For Android, also install **JDK 21**, **Android SDK / build-tools 35**, **NDK 27.0.12077973**, and **CMake 3.22.1**. Set `JAVA_HOME` and `ANDROID_HOME`, then run:
 

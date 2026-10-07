@@ -41,12 +41,15 @@
 
 | 플랫폼 | 요구 사항 | 설치 방법 |
 | --- | --- | --- |
-| Windows | Windows 10(2004 이상) 또는 11, x64 | Windows ZIP을 쓰기 가능한 폴더에 풀고 `App.exe`를 실행합니다. 포함된 파일은 같은 폴더에 두세요. |
+| Windows | Windows 10(2004 이상) 또는 11, x64 | Windows ZIP을 쓰기 가능한 폴더에 풀고 `OMNI.exe`를 실행합니다. 포함된 파일은 같은 폴더에 두세요. |
 | Android | Android 8.0 이상(API 26) | universal debug APK를 설치합니다. 앱 삭제 후에도 다운로드를 보관하려면 공유 폴더를 선택하세요. |
 | 브라우저 확장 | Windows의 Chrome／Brave | 압축을 푼 확장을 로드하고 앱 설정에서 ID를 연결합니다. [설정 안내](../../docs/DEVELOPMENT.md#browser-connection). |
 
 > **참고:**
 > Windows 실행 파일은 서명되지 않았습니다. Android 패키지는 테스트용 debug 빌드이며, 실제 기기와 백그라운드 서비스 검증은 아직 완료되지 않았습니다.
+
+> [!NOTE]
+> 이전 버전은 `App.exe`를 사용합니다. 새 이름으로 처음 업데이트할 때는 앱을 완전히 종료하고 `data/`와 `native-host.json`을 유지한 채 전체 Windows 패키지를 기존 폴더에 압축 해제한 후 `OMNI.exe`를 실행하세요.
 
 ## 빠른 시작
 
@@ -65,7 +68,7 @@ cd mp4-mp3-downloader
 ./scripts/Build-Windows.ps1
 ```
 
-출력: `artifacts/windows-win-x64/App.exe`. 스크립트가 포함될 미디어 도구를 다운로드하고 검증합니다. 배포 앱에는 .NET 런타임이 포함됩니다.
+출력: `artifacts/windows-win-x64/OMNI.exe`. 스크립트가 포함될 미디어 도구를 다운로드하고 검증합니다. 배포 앱에는 .NET 런타임이 포함됩니다.
 
 Android에는 **JDK 21**, **Android SDK／build-tools 35**, **NDK 27.0.12077973**, **CMake 3.22.1**도 필요합니다. `JAVA_HOME`과 `ANDROID_HOME`을 설정한 뒤 실행합니다.
 

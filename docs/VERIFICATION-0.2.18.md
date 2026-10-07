@@ -23,4 +23,13 @@ dotnet run --project tests/Windows.Smoke -c Release -- artifacts/qa-failed-count
 dotnet run --project tests/Windows.Smoke -c Release -- artifacts/qa-tag-first-frame artifacts/windows-win-x64 --tag-first-frame-regression
 ```
 
-本次只修改 Windows 介面。Windows x64 自含式程式已建置；下載工具及 NativeHost 沿用現有版本。
+本次修改 Windows 介面及主程式名稱。Windows x64 自含式程式已建置；下載工具沿用現有版本，NativeHost 重新建置以支援 `OMNI.exe`。
+
+## OMNI 主程式名稱
+
+- Windows 組件及 Product/Title 改為 OMNI；主視窗、系統匣及 AcoustID 頁面的圖示使用新組件資源路徑。
+- 87 項 Core 測試通過，包括新版及舊版共存時優先選取 `OMNI.exe`、舊安裝後備及缺少主程式時停止啟動。
+- AcoustID 核對頁面 WPF 回歸通過，新組件名稱下的主視窗及核對頁面資源正常載入。
+- 新版更新器支援 `App.exe` → `OMNI.exe` 遷移，保留歷史及瀏覽器本機設定；新更新包拒絕包含舊主程式名稱。舊版內置更新器本身不會因此獲得新檔名支援，第一次需手動更新或直接使用新更新器。
+- 六份 README 及開發文件的 205 項相對路徑檢查通過。
+- 更新器 11 個案例完成驗證，涵蓋新名稱安裝、舊名稱遷移、資料保存、唯讀且未改動的橋接保留、摘要／架構／路徑及舊主程式拒絕。唯讀橋接案例首次超過既有 30 秒限制，单独重跑於 13.7 秒通過；沒有放寬逾時限制。

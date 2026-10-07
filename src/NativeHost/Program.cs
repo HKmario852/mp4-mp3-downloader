@@ -13,7 +13,7 @@ try
     try { ack = await Ipc.Send(request, 400); }
     catch (Exception e) when (e is TimeoutException or OperationCanceledException or IOException)
     {
-        Process.Start(new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "App.exe")) { UseShellExecute = false, CreateNoWindow = true, ArgumentList = { "--minimized" } });
+        Process.Start(new ProcessStartInfo(DesktopExecutable.Find(AppContext.BaseDirectory)) { UseShellExecute = false, CreateNoWindow = true, ArgumentList = { "--minimized" } });
         ack = await Ipc.Send(request, 15000);
     }
     await Ipc.Write(Console.OpenStandardOutput(), ack, timeout.Token);

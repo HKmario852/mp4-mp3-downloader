@@ -41,12 +41,15 @@
 
 | 平台 | 系统要求 | 安装方式 |
 | --- | --- | --- |
-| Windows | Windows 10（2004+）或 11，x64 | 将 Windows ZIP 解压到可写入的文件夹，运行 `App.exe`；保留所有附带文件。 |
+| Windows | Windows 10（2004+）或 11，x64 | 将 Windows ZIP 解压到可写入的文件夹，运行 `OMNI.exe`；保留所有附带文件。 |
 | Android | Android 8.0+（API 26） | 安装通用 debug APK。选择共享文件夹，避免卸载时一并删除下载文件。 |
 | 浏览器扩展 | Windows 上的 Chrome／Brave | 加载解压后的扩展，并在应用设置中连接其 ID。[设置步骤](../../docs/DEVELOPMENT.md#browser-connection)。 |
 
 > **注意:**
 > Windows 可执行文件未签名。Android 软件包为供测试的 debug 版本；真机和后台服务验证尚未完成。
+
+> [!NOTE]
+> 旧版使用 `App.exe`。首次改用新名称时，请完全退出应用，将完整的 Windows 更新包解压到原文件夹，保留 `data/` 和 `native-host.json`，然后启动 `OMNI.exe`。
 
 ## 快速开始
 
@@ -65,7 +68,7 @@ cd mp4-mp3-downloader
 ./scripts/Build-Windows.ps1
 ```
 
-输出：`artifacts/windows-win-x64/App.exe`。脚本会下载并校验附带的媒体工具；发布版已包含 .NET 运行时。
+输出：`artifacts/windows-win-x64/OMNI.exe`。脚本会下载并校验附带的媒体工具；发布版已包含 .NET 运行时。
 
 构建 Android 还需要 **JDK 21**、**Android SDK／build-tools 35**、**NDK 27.0.12077973** 和 **CMake 3.22.1**。设置 `JAVA_HOME` 与 `ANDROID_HOME` 后运行：
 

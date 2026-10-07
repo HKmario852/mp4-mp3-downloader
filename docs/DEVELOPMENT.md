@@ -25,7 +25,7 @@ dotnet test tests/Core.Tests/Core.Tests.csproj
 ./scripts/Build-Windows.ps1
 ```
 
-The Windows build places `App.exe`, `Omni.NativeHost.exe`, yt-dlp, FFmpeg, ffprobe, Deno, and the updater in `artifacts/windows-win-x64/`. [Prepare-Tools.ps1](../scripts/Prepare-Tools.ps1) downloads upstream release assets and checks their SHA256 digests. Keep these files together. Without the media tools, the UI can open, but downloads cannot run.
+The Windows build places `OMNI.exe`, `Omni.NativeHost.exe`, yt-dlp, FFmpeg, ffprobe, Deno, and the updater in `artifacts/windows-win-x64/`. [Prepare-Tools.ps1](../scripts/Prepare-Tools.ps1) downloads upstream release assets and checks their SHA256 digests. Keep these files together. Without the media tools, the UI can open, but downloads cannot run.
 
 Android needs a full JDK 21, Android SDK / build-tools 35, NDK 27.0.12077973, and CMake 3.22.1. The Gradle wrapper is pinned to 8.11.1.
 
@@ -89,6 +89,8 @@ After building both platforms:
 The script packages Windows, the browser extension, and source, then writes `artifacts/SHA256SUMS.txt`. The Android debug APK is included in the checksum list if present. Release packages must exclude runtime `data/`, cookies, private keys, local SDK configuration, and `native-host.json`.
 
 The Windows app checks the configured GitHub repository for releases and asks before installing. The updater verifies the asset digest, ZIP paths and executable architecture, waits for the app, backs up replaced files, and rolls back failures. It preserves user data and browser registration. Paused tasks need to be resumed; in-memory login credentials do not survive restart.
+
+Windows packages now use `OMNI.exe`. Older releases used `App.exe`, and their bundled updater requires that old filename. For the first migration, exit the app and manually extract the complete new Windows package into the same folder, preserving `data/` and `native-host.json`. Start `OMNI.exe`, remove the old `App.exe`, and update any manually created shortcuts. The new updater also supports migrating a legacy installation when invoked directly with the required PID and verified package digest; subsequent updates restart `OMNI.exe`. The new native host prefers `OMNI.exe` and supports the old name only as a fallback.
 
 For updater development, a real matching package, PID, and SHA256 are required:
 

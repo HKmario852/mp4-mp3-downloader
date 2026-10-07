@@ -24,7 +24,7 @@ public static class Program
         RegistryIntegration.HealNativeHost(engine.Settings.ExtensionId);if(engine.Settings.StartAtLogin)DesktopIntegration.ApplyStartup(engine.Settings);
         var window = new MainWindow(engine, store); app.MainWindow = window;
         ToastNotificationManagerCompat.OnActivated += _ => app.Dispatcher.BeginInvoke(() => window.OpenHistory());
-        using var trayIconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/App;component/Assets/omni.ico"))!.Stream;
+        using var trayIconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/OMNI;component/Assets/omni.ico"))!.Stream;
         using var trayIcon = new System.Drawing.Icon(trayIconStream, 32, 32);
         var tray = new System.Windows.Forms.NotifyIcon { Text = "全能影音下載器", Icon = trayIcon, Visible = true };
         var menu = new System.Windows.Forms.ContextMenuStrip(); menu.Items.Add("開啟", null, (_, _) => window.Reveal()); menu.Items.Add("已下載", null, (_, _) => window.OpenHistory());

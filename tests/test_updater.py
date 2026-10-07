@@ -6,38 +6,50 @@ def pe(machine=0x8664):
 class UpdaterTests(unittest.TestCase):
     def run_package(self,extra=None,machine=0x8664,wrong_hash=False):
         with tempfile.TemporaryDirectory(prefix='omni-update-test-') as folder:
-            root=pathlib.Path(folder);install=root/'install';install.mkdir();(install/'App.exe').write_bytes(pe());archive=root/'release.zip'
+            root=pathlib.Path(folder);install=root/'install';install.mkdir();(install/'OMNI.exe').write_bytes(pe());archive=root/'release.zip'
             with zipfile.ZipFile(archive,'w') as z:
-                for name in ['App.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:
+                for name in ['OMNI.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:
                     z.writestr('package/'+name,pe(machine if name=='ffmpeg.exe' else 0x8664))
                 z.writestr('package/updater.ps1','test')
                 if extra:z.writestr(extra,b'bad')
             sha='0'*64 if wrong_hash else hashlib.sha256(archive.read_bytes()).hexdigest()
             result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(SCRIPT),'-InstallPath',str(install),'-AppPid','2147483647','-ZipPath',str(archive),'-ExpectedSha256',sha,'-ReleasesUrl','https://github.com/example/omni/releases','-ValidateOnly'],capture_output=True,text=True,errors='replace',timeout=30)
-            self.assertEqual((install/'App.exe').read_bytes(),pe())
+            self.assertEqual((install/'OMNI.exe').read_bytes(),pe())
             return result
     def test_real_install_keeps_data_and_removes_zip(self):
         with tempfile.TemporaryDirectory(prefix='omni-install-test-') as folder:
-            root=pathlib.Path(folder);install=root/'install';install.mkdir();(install/'data').mkdir();(install/'data/history.db').write_bytes(b'USER-DATA');(install/'native-host.json').write_text('LOCAL-CONFIG');(install/'App.exe').write_bytes(pe()+b'old');archive=root/'release.zip'
+            root=pathlib.Path(folder);install=root/'install';install.mkdir();(install/'data').mkdir();(install/'data/history.db').write_bytes(b'USER-DATA');(install/'native-host.json').write_text('LOCAL-CONFIG');(install/'OMNI.exe').write_bytes(pe()+b'old');archive=root/'release.zip'
             with zipfile.ZipFile(archive,'w') as z:
-                for name in ['App.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:z.writestr(name,pe()+b'new')
+                for name in ['OMNI.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:z.writestr(name,pe()+b'new')
                 z.writestr('updater.ps1','test')
             sha=hashlib.sha256(archive.read_bytes()).hexdigest()
             result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(SCRIPT),'-InstallPath',str(install),'-AppPid','2147483647','-ZipPath',str(archive),'-ExpectedSha256',sha,'-ReleasesUrl','https://github.com/example/omni/releases','-NoRestartPrompt'],capture_output=True,text=True,errors='replace',timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-            self.assertEqual((install/'App.exe').read_bytes(),pe()+b'new');self.assertFalse(archive.exists())
+            self.assertEqual((install/'OMNI.exe').read_bytes(),pe()+b'new');self.assertFalse(archive.exists())
             self.assertEqual((install/'data/history.db').read_bytes(),b'USER-DATA');self.assertEqual((install/'native-host.json').read_text(),'LOCAL-CONFIG')
     def test_valid(self):
         r=self.run_package();self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+    def test_legacy_executable_migrates_without_losing_data(self):
+        with tempfile.TemporaryDirectory(prefix='omni-rename-test-') as folder:
+            root=pathlib.Path(folder);install=root/'install';install.mkdir();(install/'data').mkdir()
+            (install/'data/history.db').write_bytes(b'USER-DATA');(install/'native-host.json').write_text('LOCAL-CONFIG')
+            (install/'App.exe').write_bytes(pe()+b'legacy');archive=root/'release.zip'
+            with zipfile.ZipFile(archive,'w') as z:
+                for name in ['OMNI.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:z.writestr(name,pe()+b'new')
+                z.writestr('updater.ps1','test')
+            result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(SCRIPT),'-InstallPath',str(install),'-AppPid','2147483647','-ZipPath',str(archive),'-ExpectedSha256',hashlib.sha256(archive.read_bytes()).hexdigest(),'-ReleasesUrl','https://github.com/example/omni/releases','-NoRestartPrompt'],capture_output=True,text=True,errors='replace',timeout=30)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertFalse((install/'App.exe').exists());self.assertEqual((install/'OMNI.exe').read_bytes(),pe()+b'new')
+            self.assertEqual((install/'data/history.db').read_bytes(),b'USER-DATA');self.assertEqual((install/'native-host.json').read_text(),'LOCAL-CONFIG')
     def test_unchanged_readonly_bridge_is_preserved(self):
         with tempfile.TemporaryDirectory(prefix='omni-retain-test-') as folder:
             root=pathlib.Path(folder);install=root/'install';install.mkdir()
-            (install/'App.exe').write_bytes(pe()+b'old')
+            (install/'OMNI.exe').write_bytes(pe()+b'old')
             bridge=install/'Omni.NativeHost.exe';bridge.write_bytes(pe()+b'same')
             os.utime(bridge,(1600000000,1600000000));before=bridge.stat().st_mtime_ns
             archive=root/'release.zip'
             with zipfile.ZipFile(archive,'w') as z:
-                for name in ['App.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:
+                for name in ['OMNI.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:
                     z.writestr(name,pe()+(b'same' if name=='Omni.NativeHost.exe' else b'new'))
                 z.writestr('updater.ps1','test')
             bridge.chmod(stat.S_IREAD)
@@ -46,14 +58,14 @@ class UpdaterTests(unittest.TestCase):
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr)
                 self.assertIn('Retaining verified unchanged file: Omni.NativeHost.exe',result.stdout)
                 self.assertEqual(bridge.read_bytes(),pe()+b'same');self.assertEqual(bridge.stat().st_mtime_ns,before)
-                self.assertEqual((install/'App.exe').read_bytes(),pe()+b'new')
+                self.assertEqual((install/'OMNI.exe').read_bytes(),pe()+b'new')
             finally:bridge.chmod(stat.S_IREAD|stat.S_IWRITE)
     def test_same_length_different_bridge_is_updated(self):
         with tempfile.TemporaryDirectory(prefix='omni-changed-test-') as folder:
-            root=pathlib.Path(folder);install=root/'install';install.mkdir();(install/'App.exe').write_bytes(pe())
+            root=pathlib.Path(folder);install=root/'install';install.mkdir();(install/'OMNI.exe').write_bytes(pe())
             bridge=install/'Omni.NativeHost.exe';bridge.write_bytes(pe()+b'old');archive=root/'release.zip'
             with zipfile.ZipFile(archive,'w') as z:
-                for name in ['App.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:z.writestr(name,pe()+(b'new' if name=='Omni.NativeHost.exe' else b''))
+                for name in ['OMNI.exe','Omni.NativeHost.exe','yt-dlp.exe','ffmpeg.exe','ffprobe.exe']:z.writestr(name,pe()+(b'new' if name=='Omni.NativeHost.exe' else b''))
                 z.writestr('updater.ps1','test')
             result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(SCRIPT),'-InstallPath',str(install),'-AppPid','2147483647','-ZipPath',str(archive),'-ExpectedSha256',hashlib.sha256(archive.read_bytes()).hexdigest(),'-ReleasesUrl','https://github.com/example/omni/releases','-NoRestartPrompt'],capture_output=True,text=True,errors='replace',timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertEqual(bridge.read_bytes(),pe()+b'new')
@@ -61,7 +73,8 @@ class UpdaterTests(unittest.TestCase):
         r=self.run_package(**kwargs);self.assertNotEqual(r.returncode,0);self.assertIn(needle,r.stdout+r.stderr)
     def test_architecture(self):self.rejection('this system is',machine=0xAA64)
     def test_traversal(self):self.rejection('Unsafe ZIP entry',extra='../escape.exe')
-    def test_flat_collision(self):self.rejection('Flattening collision',extra='other/App.exe')
+    def test_flat_collision(self):self.rejection('Flattening collision',extra='other/OMNI.exe')
     def test_data_protected(self):self.rejection('must not contain user data',extra='data/history.db')
     def test_bad_digest(self):self.rejection('SHA256 verification failed',wrong_hash=True)
+    def test_legacy_binary_excluded_from_release(self):self.rejection('without a legacy App.exe',extra='App.exe')
 if __name__=='__main__':unittest.main()

@@ -41,12 +41,15 @@
 
 | 対象 | 必要環境 | インストール |
 | --- | --- | --- |
-| Windows | Windows 10（2004 以降）または 11、x64 | Windows ZIP を書き込み可能なフォルダーに展開し、`App.exe` を起動。同梱ファイルはまとめて保管してください。 |
+| Windows | Windows 10（2004 以降）または 11、x64 | Windows ZIP を書き込み可能なフォルダーに展開し、`OMNI.exe` を起動。同梱ファイルはまとめて保管してください。 |
 | Android | Android 8.0 以降（API 26） | universal debug APK をインストール。アンインストール後もファイルを残すには共有フォルダーを選択します。 |
 | ブラウザー拡張機能 | Windows の Chrome／Brave | 展開した拡張機能を読み込み、アプリ設定で ID を接続。[設定手順](../../docs/DEVELOPMENT.md#browser-connection)。 |
 
 > **注意:**
 > Windows の実行ファイルは未署名です。Android はテスト用の debug ビルドで、実機とバックグラウンドサービスの検証は完了していません。
+
+> [!NOTE]
+> 旧版の実行ファイルは `App.exe` です。新しい名前への初回更新では、アプリを終了し、`data/` と `native-host.json` を残して Windows パッケージ全体を既存フォルダーに展開してください。その後 `OMNI.exe` を起動します。
 
 ## 使い方
 
@@ -65,7 +68,7 @@ cd mp4-mp3-downloader
 ./scripts/Build-Windows.ps1
 ```
 
-出力：`artifacts/windows-win-x64/App.exe`。スクリプトが同梱メディアツールをダウンロードして検証します。配布アプリには .NET ランタイムが含まれます。
+出力：`artifacts/windows-win-x64/OMNI.exe`。スクリプトが同梱メディアツールをダウンロードして検証します。配布アプリには .NET ランタイムが含まれます。
 
 Android には **JDK 21**、**Android SDK／build-tools 35**、**NDK 27.0.12077973**、**CMake 3.22.1** も必要です。`JAVA_HOME` と `ANDROID_HOME` を設定して実行します。
 
