@@ -1,4 +1,4 @@
-# 0.2.18 — Windows 介面修正
+# OMNI 0.2.18 — Windows 介面修正
 
 - 「失敗任務」按鈕會隨任務狀態更新數量，不再停留在第一次顯示的 0。進入失敗清單後顯示「返回下載任務」，支援中文及英文。
 - 進入標籤編輯時先顯示載入提示，讀取 MP3 內的標籤及封面後才顯示歌曲列表，不再先顯示過期下載資料或來源縮圖。
@@ -7,4 +7,6 @@
 
 首次由舊版轉用新名稱，請完全退出 App，將整個 Windows 更新包解壓到原資料夾，保留 `data/` 及 `native-host.json`，然後啟動 `OMNI.exe`；舊 `App.exe` 可移除。舊版內置更新器仍要求舊檔名，因此這次需手動更新。新版更新器可直接遷移舊安裝，之後會重開 `OMNI.exe`。
 
-這是 Windows 本機更新包；Android 沒有改動。GitHub Release 尚未發布。
+這次更新適用於 Windows。附帶的 Android 測試 APK 沿用 0.2.17，沒有改動。
+
+下載：[GitHub Release 0.2.18](https://github.com/HKmario852/mp4-mp3-downloader/releases/tag/v0.2.18)。
