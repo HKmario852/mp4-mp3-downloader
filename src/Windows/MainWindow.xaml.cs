@@ -72,7 +72,8 @@ public partial class MainWindow : Window
         DeleteFileButton.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
         DeleteFileButton.IsEnabled = history && SelectedJobs().Length == 1 && SelectedJobs()[0].State == JobState.Completed;
         FailedButton.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
-        FailedButton.Content = failures ? "返回下載任務" : $"失敗任務（{engine.Jobs.Count(j => j.State == JobState.Failed && !j.IsGroupRoot)}）";
+        var failedCount=engine.Jobs.Count(j=>j.State==JobState.Failed&&!j.IsGroupRoot);
+        FailedButton.Content = failures ? UiKit.T("返回下載任務","Back to download tasks") : UiKit.T($"失敗任務（{failedCount}）",$"Failed tasks ({failedCount})");
         if (previewJobId is string selectedId) { var selectedJob = engine.Jobs.FirstOrDefault(j => j.Id == selectedId); MetadataLabel.Text = selectedJob?.MetadataStatus ?? ""; }
         FormatFilter.Visibility = history && !tagsPage ? Visibility.Visible : Visibility.Collapsed;
         EditTagsButton.Visibility = FolderButton.Visibility = Visibility.Collapsed;

@@ -22,7 +22,7 @@ public sealed class TagEditorView : UserControl
     readonly CheckBox rename=new(){Content=T("同時重新命名檔案","Also rename files"),IsChecked=false};
     readonly Button undoReview=Button("復原上次套用",()=>{}); TagReviewUndo? lastUndo; DownloadJob? undoSong;
     readonly Button save; readonly AudioPreview preview;
-    string? anchor; List<Cover>? covers; bool loading,busy; DownloadJob? current;
+    string? anchor; List<Cover>? covers; bool loading,busy,libraryReady; int thumbnailLoadVersion; DownloadJob? current;
     CancellationTokenSource? coverRead;
     public bool Busy=>busy||loading;
     public bool Dirty=>delta.Count>0||raw.Text.Trim()!="{}"||covers is not null;
@@ -62,11 +62,12 @@ public sealed class TagEditorView : UserControl
             var result=await Task.Run(()=>TagLibrary.Read(sources));
             foreach(var song in result.Songs)MergeSong(song,true);
             SortSongs();if(selected.Count==0&&songs.Count>0)selected.Add((songs.FirstOrDefault(j=>preview.Session.IsFile(j.FilePath))??songs[0]).Id);
+            // Publish the list only after every row has current disk tags and artwork.
+            await LoadThumbnails();libraryReady=true;
             Rows();await LoadSelection();ShowUnavailable(result);
-            _=LoadThumbnails();
         }
         catch(Exception e){error.Text=T("未能載入已加入嘅歌曲：","Could not load saved songs: ")+e.Message;}
-        finally{busy=false;IsEnabled=true;Changed(true);}
+        finally{busy=false;IsEnabled=true;if(libraryReady)Changed(true);else state.Text=T("歌曲載入未完成","Songs could not be loaded");}
     }
     void ShowUnavailable(TagLibraryRead result)
     {
@@ -80,9 +81,24 @@ public sealed class TagEditorView : UserControl
     });
     static void ReadSongTags(DownloadJob song,Id3Document doc){song.Title=string.IsNullOrEmpty(doc.Text("TIT2"))?Path.GetFileNameWithoutExtension(song.FilePath!):doc.Text("TIT2");song.Artist=doc.Text("TPE1");song.Album=doc.Text("TALB");}
     static ImageSource? CoverImage(Id3Document doc,int? width=null){foreach(var cover in doc.GetCovers().OrderByDescending(c=>c.Type==3))try{using var stream=new MemoryStream(cover.Bytes);var image=new BitmapImage();image.BeginInit();image.CacheOption=BitmapCacheOption.OnLoad;if(width is int w)image.DecodePixelWidth=w;image.StreamSource=stream;image.EndInit();image.Freeze();return image;}catch(Exception e)when(e is NotSupportedException or System.IO.FileFormatException or ArgumentException){}return null;}
-    async Task LoadThumbnails(){foreach(var j in songs.ToArray())try{var result=await Task.Run(()=>{var doc=Id3Document.Read(j.FilePath!);return(doc,cover:CoverImage(doc,128));});ReadSongTags(j,result.doc);if(result.cover is not null)thumbnails[j.Id]=result.cover;else thumbnails.Remove(j.Id);}catch{}Rows();}
+    async Task LoadThumbnails()
+    {
+        var version=++thumbnailLoadVersion;
+        var rows=songs.ToArray();
+        var results=await Task.Run(()=>rows.Select(j=>{
+            try{var doc=Id3Document.Read(j.FilePath!);return(song:j,title:string.IsNullOrEmpty(doc.Text("TIT2"))?Path.GetFileNameWithoutExtension(j.FilePath!):doc.Text("TIT2"),artist:doc.Text("TPE1"),album:doc.Text("TALB"),cover:CoverImage(doc,128));}
+            catch(Exception e)when(e is IOException or InvalidDataException or UnauthorizedAccessException){return(song:j,title:Path.GetFileNameWithoutExtension(j.FilePath!),artist:"",album:"",cover:(ImageSource?)null);}
+        }).ToArray());
+        if(version!=thumbnailLoadVersion)return;
+        foreach(var result in results){
+            if(!songs.Contains(result.song))continue;
+            result.song.Title=result.title;result.song.Artist=result.artist;result.song.Album=result.album;
+            if(result.cover is not null)thumbnails[result.song.Id]=result.cover;else thumbnails.Remove(result.song.Id);
+        }
+        Rows();
+    }
     void Changed(bool keepError=false){var invalid=rename.IsChecked==true&&delta.TryGetValue("TIT2",out var title)?Omni.Core.Validation.TitleError(title):null;if(!keepError)error.Text=invalid??"";state.Text=Dirty?T("● 尚未儲存","● Unsaved"):T("已儲存","Saved");save.IsEnabled=!busy&&selected.Count>0&&Dirty&&invalid is null;}
-    void Rows(){Dispatcher.BeginInvoke(()=>Typography(this,engine.Settings.TextScale),System.Windows.Threading.DispatcherPriority.Loaded);songList.Children.Clear();counter.Text=T($"已選取 {selected.Count} 首歌曲",$"{selected.Count} songs selected");foreach(var j in songs.Where(j=>HistorySearch.Matches(j,search.Text))){var row=new DockPanel{Margin=new Thickness(4,10,4,10)};var check=new CheckBox{IsChecked=selected.Contains(j.Id),Visibility=selected.Count>=2?Visibility.Visible:Visibility.Collapsed};row.Children.Add(check);var thumb=new Image{Width=54,Height=54,Margin=new Thickness(5,0,10,0),Stretch=Stretch.Uniform};try{if(thumbnails.TryGetValue(j.Id,out var image))thumb.Source=image;else if(j.Thumbnail is not null)thumb.Source=new BitmapImage(new Uri(j.Thumbnail));}catch{}row.Children.Add(thumb);var t=new StackPanel();t.Children.Add(Text(j.Title,16));t.Children.Add(Text(j.Artist+" · MP3",12));row.Children.Add(t);var c=Card(row,5);c.ToolTip=j.FilePath;System.Windows.Automation.AutomationProperties.SetHelpText(c,j.FilePath??"");if(selected.Contains(j.Id))c.SetResourceReference(Border.BackgroundProperty,"Selected");songList.Children.Add(c);c.MouseLeftButtonUp+=async(_,e)=>{if(e.Handled)return;e.Handled=true;var keys=System.Windows.Input.Keyboard.Modifiers;var next=new HashSet<string>();if(keys.HasFlag(System.Windows.Input.ModifierKeys.Shift)&&anchor is not null){var ids=songs.Where(x=>HistorySearch.Matches(x,search.Text)).Select(x=>x.Id).ToList();int a=ids.IndexOf(anchor),b=ids.IndexOf(j.Id);if(a>=0)next.UnionWith(ids.Skip(Math.Min(a,b)).Take(Math.Abs(a-b)+1));else next.Add(j.Id);}else if(keys.HasFlag(System.Windows.Input.ModifierKeys.Control)){next.UnionWith(selected);if(!next.Add(j.Id))next.Remove(j.Id);anchor=j.Id;}else{next.Add(j.Id);anchor=j.Id;}await SelectSongs(next);};check.Click+=async(_,_)=>{var value=check.IsChecked==true;if(!await CanLeave()){Rows();return;}if(value)selected.Add(j.Id);else selected.Remove(j.Id);Rows();_=LoadSelection();};}songList.Children.Add(Text(T("拖放 MP3 檔案或資料夾至此","Drop MP3 files or folders here"),13));}
+    void Rows(){Dispatcher.BeginInvoke(()=>Typography(this,engine.Settings.TextScale),System.Windows.Threading.DispatcherPriority.Loaded);songList.Children.Clear();if(!libraryReady){songList.Children.Add(Text(T("正在讀取歌曲標籤與封面…","Reading song tags and artwork…"),14));return;}counter.Text=T($"已選取 {selected.Count} 首歌曲",$"{selected.Count} songs selected");foreach(var j in songs.Where(j=>HistorySearch.Matches(j,search.Text))){var row=new DockPanel{Margin=new Thickness(4,10,4,10)};var check=new CheckBox{IsChecked=selected.Contains(j.Id),Visibility=selected.Count>=2?Visibility.Visible:Visibility.Collapsed};row.Children.Add(check);var thumb=new Image{Width=54,Height=54,Margin=new Thickness(5,0,10,0),Stretch=Stretch.Uniform};try{if(thumbnails.TryGetValue(j.Id,out var image))thumb.Source=image;}catch{}row.Children.Add(thumb);var t=new StackPanel();t.Children.Add(Text(j.Title,16));t.Children.Add(Text(j.Artist+" · MP3",12));row.Children.Add(t);var c=Card(row,5);c.ToolTip=j.FilePath;System.Windows.Automation.AutomationProperties.SetHelpText(c,j.FilePath??"");if(selected.Contains(j.Id))c.SetResourceReference(Border.BackgroundProperty,"Selected");songList.Children.Add(c);c.MouseLeftButtonUp+=async(_,e)=>{if(e.Handled)return;e.Handled=true;var keys=System.Windows.Input.Keyboard.Modifiers;var next=new HashSet<string>();if(keys.HasFlag(System.Windows.Input.ModifierKeys.Shift)&&anchor is not null){var ids=songs.Where(x=>HistorySearch.Matches(x,search.Text)).Select(x=>x.Id).ToList();int a=ids.IndexOf(anchor),b=ids.IndexOf(j.Id);if(a>=0)next.UnionWith(ids.Skip(Math.Min(a,b)).Take(Math.Abs(a-b)+1));else next.Add(j.Id);}else if(keys.HasFlag(System.Windows.Input.ModifierKeys.Control)){next.UnionWith(selected);if(!next.Add(j.Id))next.Remove(j.Id);anchor=j.Id;}else{next.Add(j.Id);anchor=j.Id;}await SelectSongs(next);};check.Click+=async(_,_)=>{var value=check.IsChecked==true;if(!await CanLeave()){Rows();return;}if(value)selected.Add(j.Id);else selected.Remove(j.Id);Rows();_=LoadSelection();};}songList.Children.Add(Text(T("拖放 MP3 檔案或資料夾至此","Drop MP3 files or folders here"),13));}
     async Task SelectSongs(IEnumerable<string> ids){var next=ids.ToArray();if(!await CanLeave())return;selected.Clear();selected.UnionWith(next);Rows();await LoadSelection();}
     public async Task ReviewApplied(DownloadJob song,Dictionary<string,string> applied,Cover? cover,TagReviewUndo? undo,int count){
         var draft=delta.Where(p=>!applied.ContainsKey(p.Key)).ToDictionary(p=>p.Key,p=>p.Value);var extra=raw.Text;var draftCover=covers;

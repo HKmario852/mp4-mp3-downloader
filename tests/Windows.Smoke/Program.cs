@@ -16,7 +16,7 @@ public static class Program
         var output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown }; var store = new Store(Path.Combine(output, "smoke-data"));
         if (args.Contains("--ui-regression")) store.Save(new DownloadJob { Id="ui-fixture", RequestId="ui-fixture", State=JobState.Completed, Title="介面測試 · 完整縮圖與深藍選取", Url="https://www.youtube.com/watch?v=ui_fixture&list=PL_preview&index=123&feature=shared", Mode=DownloadMode.Mp3, AudioKbps=320, Duration=240, CompletedAt=DateTimeOffset.UtcNow });
-        if (args.Contains("--player-regression") || args.Contains("--player-interactive") || args.Contains("--library-persistence-regression") || args.Contains("--metadata-read-regression") || args.Contains("--folder-import-regression") || args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
+        if (args.Contains("--tag-first-frame-regression") || args.Contains("--player-regression") || args.Contains("--player-interactive") || args.Contains("--library-persistence-regression") || args.Contains("--metadata-read-regression") || args.Contains("--folder-import-regression") || args.Contains("--artwork-drop-regression") || args.Contains("--review-regression") || args.Contains("--live-scan") || args.Contains("--v27-regression") || args.Contains("--v24-regression") || args.Contains("--v21-regression") || args.Contains("--library-regression") || args.Contains("--update-regression") || args.Contains("--v2-regression"))
         {
             foreach (var (id, mode) in new[]{("music-a",DownloadMode.Mp3),("music-b",DownloadMode.Mp3),("video",DownloadMode.Mp4)})
             {
@@ -27,6 +27,7 @@ public static class Program
             }
             var p=store.Preferences();p.Mp3Directory=Path.Combine(output,"music");p.Mp4Directory=Path.Combine(output,"video");if(args.Contains("--v27-regression"))p.Language="en";store.SavePreferences(p);
         }
+        if (args.Contains("--failed-count-regression")) store.Save(new DownloadJob{Id="cc000000000000000000000000000001",Title="Demo task",State=JobState.Paused});
         if (args.Contains("--update-regression")) { store.Save(new DownloadJob{Id="paused",Title="暫停測試",State=JobState.Paused}); store.Save(new DownloadJob{Id="failed",Title="失敗測試",State=JobState.Failed}); }
         var engine = new Downloader(store, Path.GetFullPath(args[1]), Path.Combine(output, "smoke-work"));
         var window = new MainWindow(engine, store) { AllowClose = true, ShowInTaskbar = false, Left = -10000, Top = -10000, WindowStartupLocation = WindowStartupLocation.Manual };
@@ -40,6 +41,8 @@ public static class Program
             {
                 await app.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
                 Capture(window, Path.Combine(output, "windows-empty.png"));
+                if(args.Contains("--failed-count-regression")){await CheckFailedCount(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
+                if(args.Contains("--tag-first-frame-regression")){await CheckTagFirstFrame(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--player-regression")||args.Contains("--player-interactive")){await CheckPlayer(window,engine,store,app,output,args.Contains("--player-interactive"));await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--recording-smoke")){
                     var result=await new MusicMetadata().Recording("cb39b5d8-ebb8-4bad-9f17-9d952108ecb7","885b1ba8-65f0-476b-939c-704db7a696de",CancellationToken.None);
@@ -83,6 +86,57 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckFailedCount(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output)
+    {
+        void Check(bool ok,string message){if(!ok)throw new Exception(message);}
+        var button=(Button)window.FindName("FailedButton");
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        async Task Refresh(){typeof(MainWindow).GetMethod("Refresh",flags)!.Invoke(window,null);await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);window.UpdateLayout();}
+        void Label(string expected){var rendered=string.Join("",Descendants(button).OfType<TextBlock>().Select(t=>t.Text));Check(rendered==expected,$"Failed button rendered '{rendered}', expected '{expected}' (Content: {button.Content})");}
+        await Refresh();Label("失敗任務（0）");
+        var job=engine.Jobs.Single(j=>j.Id=="cc000000000000000000000000000001");job.State=JobState.Failed;store.Save(job);
+        await Refresh();Label("失敗任務（1）");
+        Capture(window,Path.Combine(output,"queue-failed-count.png"));
+        ((TextBox)window.FindName("SearchBox")).Text="unrelated query";await Refresh();Label("失敗任務（1）");
+        ((TextBox)window.FindName("SearchBox")).Clear();button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Refresh();
+        Label("返回下載任務");Check(((DataGrid)window.FindName("JobGrid")).Items.Count==1,"Failed page must show the failed job");
+        Capture(window,Path.Combine(output,"failed-count.png"));
+        UiKit.Language="en";await Refresh();Label("Back to download tasks");
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Refresh();Label("Failed tasks (1)");
+        job.State=JobState.Paused;store.Save(job);await Refresh();Label("Failed tasks (0)");
+        job.State=JobState.Failed;store.Save(job);await Refresh();Label("Failed tasks (1)");
+        await engine.Cancel([job.Id]);await Refresh();Label("Failed tasks (0)");
+        UiKit.Language="zh-TW";await Refresh();Label("失敗任務（0）");
+        File.WriteAllText(Path.Combine(output,"failed-count-checks.json"),Json.Encode(new{passed=true,checks=new[]{"rendered count 0 to 1","search-independent count","failed page return label","English and Chinese","state transition and removal"}}));
+    }
+    static async Task CheckTagFirstFrame(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output)
+    {
+        void Check(bool ok,string message){if(!ok)throw new Exception(message);}
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        byte[] Cover(Color color){var bitmap=BitmapSource.Create(1,1,96,96,PixelFormats.Bgra32,null,new byte[]{color.B,color.G,color.R,255},4);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bitmap));using var stream=new MemoryStream();png.Save(stream);return stream.ToArray();}
+        var legacy=Path.Combine(output,"legacy-cover.png");File.WriteAllBytes(legacy,Cover(Colors.Red));
+        foreach(var song in store.Load().Where(j=>j.Extension=="mp3")){
+            await new TagEditor(store).Apply([song],new(new(){["TIT2"]="Current demo song",["TPE1"]="Demo artist"},Covers:[new(Cover(Colors.Blue),"image/png","Front",3)],RenameFile:false));
+            song.Title="STALE CACHED TITLE";song.Artist="STALE CACHED ARTIST";song.Thumbnail=new Uri(legacy).AbsoluteUri;store.Save(song);
+        }
+        var files=store.Load().Where(j=>j.Extension=="mp3").Select(j=>j.FilePath!).ToArray();var hashes=await Task.WhenAll(files.Select(TagReview.Hash));var history=store.Load().Select(Json.Encode).ToArray();
+        for(int visit=0;visit<2;visit++){
+            ((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var view=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;
+            var list=(StackPanel)typeof(TagEditorView).GetField("songList",flags)!.GetValue(view)!;
+            void Inspect(){Check(!Descendants(list).OfType<TextBlock>().Any(t=>t.Text.Contains("STALE CACHED")),"A stale metadata row appeared before disk hydration");Check(!Descendants(list).OfType<System.Windows.Controls.Image>().Any(i=>i.Source is BitmapImage b&&b.UriSource?.LocalPath==legacy),"A history thumbnail appeared before the embedded artwork");}
+            string? transientError=null;EventHandler observer=(_,_)=>{try{Inspect();}catch(Exception e){transientError=e.Message;}};view.LayoutUpdated+=observer;
+            try{window.UpdateLayout();Inspect();Capture(window,Path.Combine(output,$"tag-loading-{visit}.png"));for(int i=0;view.Busy&&i<500;i++)await Task.Delay(20);Check(!view.Busy,"Tag library did not finish loading");await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);window.UpdateLayout();Inspect();Check(transientError is null,transientError??"");}
+            finally{view.LayoutUpdated-=observer;}
+            Check(Descendants(list).OfType<TextBlock>().Count(t=>t.Text=="Current demo song")==2,"Every row must display disk metadata on its first visible frame");
+            Check(Descendants(list).OfType<System.Windows.Controls.Image>().Count(i=>i.Source is not null)==2,"Every row must display embedded artwork after loading");
+            if(visit==0){var fields=(Dictionary<string,TextBox>)typeof(TagEditorView).GetField("fields",flags)!.GetValue(view)!;fields["TIT2"].Text="Demo unsaved draft";await (Task)typeof(TagEditorView).GetMethod("LoadThumbnails",flags)!.Invoke(view,null)!;Check(fields["TIT2"].Text=="Demo unsaved draft"&&view.Dirty,"Artwork hydration must preserve an unsaved draft");await (Task)typeof(TagEditorView).GetMethod("LoadSelection",flags)!.Invoke(view,null)!;}
+            Capture(window,Path.Combine(output,$"tag-first-frame-{visit}.png"));
+            ((Button)window.FindName("QueueNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        }
+        Check(hashes.SequenceEqual(await Task.WhenAll(files.Select(TagReview.Hash))),"Opening the editor must not write MP3 files");Check(history.SequenceEqual(store.Load().Select(Json.Encode)),"Opening the editor must not rewrite history");
+        File.WriteAllText(Path.Combine(output,"tag-first-frame-checks.json"),Json.Encode(new{passed=true,checks=new[]{"no stale first frame","embedded artwork only","navigation reentry","draft preservation","no file or history writes"}}));
     }
     static async Task CheckPlayer(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output,bool interactive)
     {

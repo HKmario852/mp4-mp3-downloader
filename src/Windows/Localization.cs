@@ -19,8 +19,11 @@ public static class Localization
     {
         // Only static shell controls; never translate user titles or bound data rows.
         if(root is DataGrid grid){foreach(var col in grid.Columns)if(col.Header is string h)col.Header=Label(h,english);return;}
-        if(root is TextBlock t && (t.Name.Length==0||t.Name=="EmptyTitle"||t.Name=="PageTitle") && t.DataContext is not Omni.Core.DownloadJob)t.Text=Label(t.Text,english);
-        if(root is Button b&&b.Content is string s)b.Content=Label(s,english);
+        // Generated ContentPresenter text belongs to the control's binding. Replacing
+        // that expression freezes dynamic button labels at their first rendered value.
+        if(root is TextBlock t && (t.Name.Length==0||t.Name=="EmptyTitle"||t.Name=="PageTitle") && t.DataContext is not Omni.Core.DownloadJob
+            && !DependencyPropertyHelper.GetValueSource(t,TextBlock.TextProperty).IsExpression){var translated=Label(t.Text,english);if(translated!=t.Text)t.Text=translated;}
+        if(root is Button b&&b.Content is string s){var translated=Label(s,english);if(translated!=s)b.Content=translated;}
         for(var i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)Apply(VisualTreeHelper.GetChild(root,i),english);
     }
 }
