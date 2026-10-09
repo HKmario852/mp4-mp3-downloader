@@ -1,6 +1,6 @@
 <p align="center"><img src="../../docs/assets/logo.png" alt="Omni Downloader" width="88" /></p>
 <h1 align="center">Omni Downloader</h1>
-<p align="center">영상과 오디오를 다운로드하고, 파일과 MP3 태그를 관리하며 음악 인식 결과를 확인하세요.</p>
+<p align="center">영상과 오디오를 다운로드하고, 파일과 오디오 태그를 관리하며 음악 인식 결과를 확인하세요.</p>
 
 <p align="center">
   <a href="https://github.com/HKmario852/mp4-mp3-downloader/releases/latest"><img src="https://img.shields.io/github/v/release/HKmario852/mp4-mp3-downloader" alt="Latest release" /></a>
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="../../docs/screenshots/windows-downloads.png"><img src="../../docs/screenshots/windows-downloads.png" alt="다운로드 목록" width="49%" /></a>
-  <a href="../../docs/screenshots/windows-tag-editor.png"><img src="../../docs/screenshots/windows-tag-editor.png" alt="MP3 태그 편집" width="49%" /></a>
+  <a href="../../docs/screenshots/windows-tag-editor.png"><img src="../../docs/screenshots/windows-tag-editor.png" alt="오디오 태그 편집" width="49%" /></a>
 </p>
 
 *Windows 스크린샷에는 합성 샘플 미디어와 직접 만든 기하학적 커버만 사용했습니다. 클릭하면 확대됩니다.*
@@ -29,8 +29,8 @@
 ## 기능
 
 - 📥 yt-dlp로 영상과 재생목록을 다운로드하고 대기열, 일시 정지, 재개, 작업을 관리합니다.
-- 🎞️ MP4, MKV, WebM, MP3, M4A, FLAC, WAV를 선택할 수 있습니다. 사용 가능한 형식은 원본에 따라 다릅니다.
-- 🏷️ MP3 태그를 일괄 편집하고 정사각형에 가까운 커버를 삽입합니다. 별도의 JPG 파일은 만들지 않습니다.
+- 🎞️ MP4, MKV, WebM, MP3, Opus, M4A, FLAC, WAV를 선택할 수 있습니다. 사용 가능한 형식은 원본에 따라 다릅니다.
+- 🏷️ MP3, Opus, M4A, FLAC 태그를 일괄 편집하고 정사각형에 가까운 커버를 삽입합니다. 별도의 JPG 파일은 만들지 않습니다.
 - 🔎 AcoustID／MusicBrainz 후보를 확인한 뒤 선택한 필드만 가져옵니다. 복원 기록도 선택적으로 보관할 수 있습니다.
 - 🎧 Windows에서는 추가한 음악 폴더를 기억하며 페이지를 바꿔도 미리 듣기가 계속됩니다.
 - 🌐 브라우저 확장으로 Chrome이나 Brave의 YouTube 링크를 Windows 앱에 보냅니다.
@@ -55,8 +55,8 @@
 
 1. **New download**에 영상 또는 재생목록 URL을 붙여 넣고 **Analyze link**를 선택합니다.
 2. 형식, 품질, 저장 위치를 선택한 뒤 다운로드를 시작합니다.
-3. 완료된 파일은 **Downloaded**에서 확인합니다. **Tag editor**에서 MP3 또는 폴더를 추가해 태그와 커버를 편집합니다.
-4. 음악을 인식하려면 MP3 하나를 선택하고 **Scan 音訊辨識**를 누릅니다. 후보와 변경 내용을 검토한 뒤 명시적으로 적용한 필드와 커버만 기록됩니다.
+3. 완료된 파일은 **Downloaded**에서 확인합니다. **Tag editor**에서 MP3, Opus, M4A, FLAC 파일 또는 폴더를 추가해 태그와 커버를 편집합니다.
+4. 음악을 인식하려면 지원되는 오디오 파일 하나를 선택하고 **Scan 音訊辨識**를 누릅니다. 후보와 변경 내용을 검토한 뒤 명시적으로 적용한 필드와 커버만 기록됩니다.
 
 ## 소스에서 빌드
 
@@ -81,7 +81,8 @@ Android에는 **JDK 21**, **Android SDK／build-tools 35**, **NDK 27.0.12077973*
 ## 설정
 
 - **Settings**에서 저장 위치, 형식, 품질, 자막, 커버 옵션을 변경합니다. 영상 썸네일을 별도 파일로 저장하는 기능은 **기본적으로 꺼져 있습니다**.
-- Windows는 기본적으로 **다운로드 후** 백그라운드에서 MP3 메타데이터를 조회합니다. 다운로드 전 또는 끄기로 바꿀 수 있습니다. Android의 자동 태그 매칭은 기본적으로 꺼져 있지만, 누락된 커버를 찾는 과정에서 MusicBrainz를 조회할 수 있습니다.
+- 네이티브 Opus／M4A는 재인코딩 없이 원본 오디오를 유지합니다. MP3는 CBR 또는 VBR V0를 지원하며 새 MP3의 기본 태그는 ID3v2.3이고 ID3v2.4도 선택할 수 있습니다. FLAC으로 바꿔도 손실 압축 원본의 음질은 개선되지 않습니다. [오디오 파이프라인](../../docs/AUDIO-PIPELINE.md).
+- Windows는 기본적으로 **다운로드 후** 백그라운드에서 오디오 메타데이터를 조회합니다. 다운로드 전 또는 끄기로 바꿀 수 있습니다. Android의 자동 태그 매칭은 기본적으로 꺼져 있지만, 누락된 커버를 찾는 과정에서 MusicBrainz를 조회할 수 있습니다.
 - 앱의 언어 설정은 **번체 중국어와 영어**입니다. 번역이 완전하지 않아 일부 화면과 브라우저 확장은 중국어로 표시됩니다. README 번역이 앱 언어를 추가하는 것은 아닙니다.
 - 접근이 제한된 콘텐츠에는 권한이 있는 계정에서 내보낸 Netscape 형식 cookies 파일이 필요할 수 있습니다. 이 파일을 공유하지 마세요. [브라우저 연결](../../docs/DEVELOPMENT.md#browser-connection) · [음악 인식](../../docs/MUSIC-RECOGNITION.md).
 
@@ -99,4 +100,4 @@ Android에는 **JDK 21**, **Android SDK／build-tools 35**, **NDK 27.0.12077973*
 
 ## 라이선스 및 감사
 
-**[GPL-3.0-or-later](../../LICENSE)** 라이선스를 사용합니다. yt-dlp, FFmpeg, youtubedl-android, Deno, Chromaprint, MusicBrainz, AcoustID, Cover Art Archive에 감사드립니다. 상위 프로젝트와 재배포 의무는 [타사 고지](../../THIRD-PARTY.md)를 참고하세요.
+**[GPL-3.0-or-later](../../LICENSE)** 라이선스를 사용합니다. yt-dlp, FFmpeg, TagLibSharp, jaudiotagger, youtubedl-android, Deno, Chromaprint, MusicBrainz, AcoustID, Cover Art Archive에 감사드립니다. 상위 프로젝트와 재배포 의무는 [타사 고지](../../THIRD-PARTY.md)를 참고하세요.

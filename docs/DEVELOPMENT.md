@@ -65,16 +65,16 @@ Do not put cookies in URLs, Git, logs, screenshots, or release archives. Forward
 
 ## Data and media behavior
 
-- Windows stores preferences and history in `data/` beside the app, falling back to `%LOCALAPPDATA%/OmniDownloader` when needed. MP3 files and folder sources added to the tag editor are remembered. Audio preview belongs to the app session and continues between pages.
+- Windows stores preferences and history in `data/` beside the app, falling back to `%LOCALAPPDATA%/OmniDownloader` when needed. Supported audio files and folder sources added to the tag editor are remembered. Audio preview belongs to the app session and continues between pages.
 - On Android, the initial app-external music folder is deleted on uninstall. Select a shared SAF folder for durable downloads. Foreground-service limits and storage-provider behavior depend on Android and the device.
 - Preferences are captured when a download is queued. Incomplete tasks are restored as paused after a process restart. Pause retains resumable work; cancel removes task-specific staging.
 - Quality choices depend on source formats. The video selector limits known heights to the chosen setting; sources without height metadata prevent an absolute resolution guarantee. Transcoding cannot improve the source's quality.
-- MP3 artwork is embedded in ID3/APIC, without publishing JPG sidecars. Automatic album artwork accepts near-square images rather than stretching rectangular video thumbnails. Standalone video thumbnails are opt-in.
+- Audio artwork is embedded in the format’s native picture structure, without publishing JPG sidecars. Automatic album artwork accepts near-square images rather than stretching rectangular video thumbnails. Standalone video thumbnails are opt-in.
 - Windows MP3 metadata mode defaults to background lookup after download, with before/off alternatives. Android automatic tag matching defaults to off; its missing-artwork fallback may still query MusicBrainz. Disabling tag matching is not a global offline switch.
 
 ## Tag editing and recognition
 
-The editor works with ID3v2.3/v2.4 tags; do not assume every unusual frame or file variant is supported. Deltas distinguish an absent key (unchanged) from an explicitly empty value. Track numbers are fixed batch values, not automatic increments. Changing a nonempty title can rename the file; Windows filename validation and collision handling apply. Unchanged titles do not trigger renaming.
+The editor works with MP3 (ID3v2.3/v2.4), Opus/FLAC (Vorbis comments), and M4A (MP4 atoms); do not assume every unusual frame or file variant is supported. Deltas distinguish an absent key (unchanged) from an explicitly empty value. Track numbers are fixed batch values, not automatic increments. Changing a nonempty title can rename the file; Windows filename validation and collision handling apply. Unchanged titles do not trigger renaming.
 
 Scan is a top-level view in the existing window, not a second window. Fingerprinting decodes up to 120 seconds locally. AcoustID receives the fingerprint and total duration; MusicBrainz receives metadata queries or IDs. Public MusicBrainz lookup needs no account. The distributed Windows app has an AcoustID application key; an optional custom application key can be configured. Neither a MusicBrainz password nor an AcoustID personal submission key is required.
 

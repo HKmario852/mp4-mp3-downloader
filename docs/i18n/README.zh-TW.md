@@ -1,6 +1,6 @@
 <p align="center"><img src="../../docs/assets/logo.png" alt="Omni Downloader" width="88" /></p>
 <h1 align="center">Omni Downloader</h1>
-<p align="center">下載影音、管理檔案、編輯 MP3 標籤，並核對音樂辨識結果。</p>
+<p align="center">下載影音、管理檔案、編輯音訊標籤，並核對音樂辨識結果。</p>
 
 <p align="center">
   <a href="https://github.com/HKmario852/mp4-mp3-downloader/releases/latest"><img src="https://img.shields.io/github/v/release/HKmario852/mp4-mp3-downloader" alt="Latest release" /></a>
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="../../docs/screenshots/windows-downloads.png"><img src="../../docs/screenshots/windows-downloads.png" alt="下載任務" width="49%" /></a>
-  <a href="../../docs/screenshots/windows-tag-editor.png"><img src="../../docs/screenshots/windows-tag-editor.png" alt="MP3 標籤編輯" width="49%" /></a>
+  <a href="../../docs/screenshots/windows-tag-editor.png"><img src="../../docs/screenshots/windows-tag-editor.png" alt="音訊標籤編輯" width="49%" /></a>
 </p>
 
 *Windows 截圖使用合成示範媒體與原創幾何封面。點擊可放大。*
@@ -29,8 +29,8 @@
 ## 功能
 
 - 📥 使用 yt-dlp 下載影片與播放清單，支援排隊、暫停、續傳及任務管理。
-- 🎞️ 可選 MP4、MKV、WebM、MP3、M4A、FLAC 或 WAV，實際選項取決於來源。
-- 🏷️ 批次編輯 MP3 標籤，內嵌近正方形封面，不另存 JPG 檔案。
+- 🎞️ 可選 MP4、MKV、WebM、MP3、Opus、M4A、FLAC 或 WAV，實際選項取決於來源。
+- 🏷️ 批次編輯 MP3、Opus、M4A 及 FLAC 標籤，內嵌近正方形封面，不另存 JPG 檔案。
 - 🔎 匯入前核對 AcoustID／MusicBrainz 配對，只套用選取欄位，並可保留復原記錄。
 - 🎧 Windows 會記住加入的音樂資料夾，切換頁面時繼續播放預覽音訊。
 - 🌐 透過瀏覽器擴充功能，將 Chrome 或 Brave 的 YouTube 連結傳到 Windows App。
@@ -55,8 +55,8 @@
 
 1. 在 **新增下載** 貼上影片或播放清單網址，按 **分析連結**。
 2. 選擇格式、品質與儲存位置，開始下載。
-3. 在 **已下載** 查看完成的檔案。前往 **標籤編輯** 加入 MP3 或資料夾，修改標籤與封面。
-4. 辨識歌曲時，選取一首 MP3 並按 **Scan 音訊辨識**。核對候選版本與變更後，只有明確套用的欄位與封面才會寫入。
+3. 在 **已下載** 查看完成的檔案。前往 **標籤編輯** 加入 MP3、Opus、M4A、FLAC 或資料夾，修改標籤與封面。
+4. 辨識歌曲時，選取一個支援的音訊檔並按 **Scan 音訊辨識**。核對候選版本與變更後，只有明確套用的欄位與封面才會寫入。
 
 ## 從原始碼建置
 
@@ -81,6 +81,7 @@ cd mp4-mp3-downloader
 ## 設定
 
 - 在 **設定** 調整儲存位置、格式、品質、字幕與封面選項。獨立影片縮圖 **預設關閉**。
+- 原生 Opus／M4A 保留來源的編碼音訊。MP3 可選 CBR 或 VBR V0；新 MP3 預設 ID3v2.3，可選 ID3v2.4。FLAC 不會提升有損來源的音質。[音訊管線](../../docs/AUDIO-PIPELINE.md)。
 - Windows 預設在 **下載完成後** 於背景查找 MP3 標籤，可改為下載前或關閉。Android 自動標籤配對預設關閉，但封面後備流程仍可能查詢 MusicBrainz。
 - App 提供 **繁體中文與英文** 設定，但翻譯尚未完整：部分畫面及瀏覽器擴充功能仍為中文。README 翻譯不代表新增介面語言。
 - 受限制內容可能需要具備存取權帳號的 Netscape 格式 cookies 檔案，請勿分享。[瀏覽器連接](../../docs/DEVELOPMENT.md#browser-connection) · [音樂辨識](../../docs/MUSIC-RECOGNITION.md)。

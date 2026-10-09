@@ -1,6 +1,6 @@
 <p align="center"><img src="../../docs/assets/logo.png" alt="Omni Downloader" width="88" /></p>
 <h1 align="center">Omni Downloader</h1>
-<p align="center">動画と音声をダウンロード。ファイルを整理し、MP3 タグと楽曲の照合結果を確認。</p>
+<p align="center">動画と音声をダウンロード。ファイルを整理し、音声タグと楽曲の照合結果を確認。</p>
 
 <p align="center">
   <a href="https://github.com/HKmario852/mp4-mp3-downloader/releases/latest"><img src="https://img.shields.io/github/v/release/HKmario852/mp4-mp3-downloader" alt="Latest release" /></a>
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="../../docs/screenshots/windows-downloads.png"><img src="../../docs/screenshots/windows-downloads.png" alt="ダウンロード一覧" width="49%" /></a>
-  <a href="../../docs/screenshots/windows-tag-editor.png"><img src="../../docs/screenshots/windows-tag-editor.png" alt="MP3 タグ編集" width="49%" /></a>
+  <a href="../../docs/screenshots/windows-tag-editor.png"><img src="../../docs/screenshots/windows-tag-editor.png" alt="音声タグ編集" width="49%" /></a>
 </p>
 
 *Windows の画面は合成したサンプルメディアとオリジナルの幾何学アートを使用しています。クリックで拡大できます。*
@@ -29,8 +29,8 @@
 ## 機能
 
 - 📥 yt-dlp で動画やプレイリストをダウンロード。キュー、停止、再開、タスク管理に対応。
-- 🎞️ MP4、MKV、WebM、MP3、M4A、FLAC、WAV を選択可能。利用できる形式は配信元によります。
-- 🏷️ MP3 タグを一括編集し、ほぼ正方形のカバー画像を埋め込み。別の JPG ファイルは作成しません。
+- 🎞️ MP4、MKV、WebM、MP3、Opus、M4A、FLAC、WAV を選択可能。利用できる形式は配信元によります。
+- 🏷️ MP3、Opus、M4A、FLAC のタグを一括編集し、ほぼ正方形のカバー画像を埋め込み。別の JPG ファイルは作成しません。
 - 🔎 AcoustID／MusicBrainz の候補を確認してから、選んだ項目だけを取り込み。復元用の記録も保存できます。
 - 🎧 Windows では追加した音楽フォルダーを記憶し、ページを切り替えても試聴を継続します。
 - 🌐 ブラウザー拡張機能で Chrome／Brave の YouTube リンクを Windows アプリに送信。
@@ -55,8 +55,8 @@
 
 1. **New download** に動画またはプレイリストの URL を貼り付け、**Analyze link** を選びます。
 2. 形式、品質、保存先を選んでダウンロードを開始します。
-3. 完了したファイルは **Downloaded** で確認できます。**Tag editor** で MP3 やフォルダーを追加し、タグやカバー画像を編集します。
-4. 楽曲を識別するには MP3 を 1 つ選び、**Scan 音訊辨識** を実行します。候補と変更を確認し、明示的に適用した項目と画像だけが書き込まれます。
+3. 完了したファイルは **Downloaded** で確認できます。**Tag editor** で MP3、Opus、M4A、FLAC のファイルやフォルダーを追加し、タグやカバー画像を編集します。
+4. 楽曲を識別するには 対応する音声ファイルを 1 つ選び、**Scan 音訊辨識** を実行します。候補と変更を確認し、明示的に適用した項目と画像だけが書き込まれます。
 
 ## ソースからビルド
 
@@ -81,7 +81,8 @@ Android には **JDK 21**、**Android SDK／build-tools 35**、**NDK 27.0.120779
 ## 設定
 
 - **Settings** で保存先、形式、品質、字幕、画像の設定を変更できます。動画サムネイルの別ファイル保存は **初期設定では無効**です。
-- Windows の MP3 メタデータ検索は、初期設定では **ダウンロード完了後**にバックグラウンドで行います。開始前または無効にも変更できます。Android の自動タグ照合は初期設定で無効ですが、カバー画像の補完時には MusicBrainz に問い合わせることがあります。
+- ネイティブの Opus／M4A は再エンコードせず音声を保持します。MP3 は CBR または VBR V0 を選択でき、新規 MP3 のタグは ID3v2.3 が既定で、ID3v2.4 も選べます。FLAC にしても非可逆圧縮された音源の音質は向上しません。[音声パイプライン](../../docs/AUDIO-PIPELINE.md)。
+- Windows の 音声メタデータ検索は、初期設定では **ダウンロード完了後**にバックグラウンドで行います。開始前または無効にも変更できます。Android の自動タグ照合は初期設定で無効ですが、カバー画像の補完時には MusicBrainz に問い合わせることがあります。
 - アプリの言語設定は **繁体字中国語と英語**です。翻訳は未完了で、一部の画面とブラウザー拡張機能は中国語のままです。README の翻訳はアプリの対応言語を増やすものではありません。
 - 制限付きコンテンツには、閲覧権限のあるアカウントから書き出した Netscape 形式の cookies ファイルが必要な場合があります。共有しないでください。[ブラウザー接続](../../docs/DEVELOPMENT.md#browser-connection) · [楽曲識別](../../docs/MUSIC-RECOGNITION.md)。
 

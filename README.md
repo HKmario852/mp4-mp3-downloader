@@ -1,6 +1,6 @@
 <p align="center"><img src="docs/assets/logo.png" alt="Omni Downloader" width="88" /></p>
 <h1 align="center">Omni Downloader</h1>
-<p align="center">Download videos and audio. Organize files, edit MP3 tags, and review music matches.</p>
+<p align="center">Download videos and audio. Organize files, edit audio tags, and review music matches.</p>
 
 <p align="center">
   <a href="https://github.com/HKmario852/mp4-mp3-downloader/releases/latest"><img src="https://img.shields.io/github/v/release/HKmario852/mp4-mp3-downloader" alt="Latest release" /></a>
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="docs/screenshots/windows-downloads.png"><img src="docs/screenshots/windows-downloads.png" alt="Download queue" width="49%" /></a>
-  <a href="docs/screenshots/windows-tag-editor.png"><img src="docs/screenshots/windows-tag-editor.png" alt="MP3 tag editor" width="49%" /></a>
+  <a href="docs/screenshots/windows-tag-editor.png"><img src="docs/screenshots/windows-tag-editor.png" alt="Audio tag editor" width="49%" /></a>
 </p>
 
 *Windows screenshots use generated sample media and original geometric artwork. Click to enlarge.*
@@ -29,8 +29,8 @@
 ## Features
 
 - 📥 Download videos and playlists with yt-dlp; queue, pause, resume, and manage tasks.
-- 🎞️ Choose MP4, MKV, WebM, MP3, M4A, FLAC, or WAV, depending on the source.
-- 🏷️ Edit MP3 tags in batches and embed near-square cover art without extra JPG files.
+- 🎞️ Choose MP4, MKV, WebM, MP3, Opus, M4A, FLAC, or WAV, depending on the source.
+- 🏷️ Edit MP3, Opus, M4A, and FLAC tags in batches and embed near-square cover art without extra JPG files.
 - 🔎 Review AcoustID / MusicBrainz matches before importing selected fields, with optional undo records.
 - 🎧 On Windows, remember added music folders and keep preview audio playing while switching pages.
 - 🌐 Send YouTube links from Chrome or Brave to the Windows app through the browser extension.
@@ -55,8 +55,8 @@ Get the packages from **[the latest release](https://github.com/HKmario852/mp4-m
 
 1. Paste a video or playlist URL into **New download**, then select **Analyze link**.
 2. Choose a format, quality, and destination, then start the download.
-3. Find completed files in **Downloaded**. Open **Tag editor** to add MP3 files or folders and edit their tags or artwork.
-4. To identify a song, select one MP3 and choose **Scan 音訊辨識**. Review the candidates and changes; only explicitly applied fields and artwork are written.
+3. Find completed files in **Downloaded**. Open **Tag editor** to add MP3, Opus, M4A, or FLAC files or folders and edit their tags or artwork.
+4. To identify a song, select one supported audio file and choose **Scan 音訊辨識**. Review the candidates and changes; only explicitly applied fields and artwork are written.
 
 ## Build from source
 
@@ -81,7 +81,8 @@ Output: `artifacts/OmniDownloader-universal-debug.apk`. The script also builds i
 ## Configuration
 
 - Set output folders, formats, quality, subtitles, and artwork options in **Settings**. Standalone video thumbnails are **off by default**.
-- Windows defaults to MP3 metadata lookup **after downloading**, in the background; choose before, after, or off. Android automatic tag matching defaults to off, but its artwork fallback can still query MusicBrainz.
+- Native Opus/M4A preserves the encoded source. MP3 offers CBR or VBR V0; new MP3 defaults to ID3v2.3 with optional ID3v2.4. FLAC does not improve a lossy source. [Audio pipeline](docs/AUDIO-PIPELINE.md).
+- Windows defaults to audio metadata lookup **after downloading**, in the background; choose before, after, or off. Android automatic tag matching defaults to off, but its artwork fallback can still query MusicBrainz.
 - The app offers **Traditional Chinese and English** settings. Translation is incomplete: some screens and the browser extension remain in Chinese. These README translations do not add app languages.
 - Restricted content may require a Netscape-format cookies file from an account with access. Never share that file. [Browser connection](docs/DEVELOPMENT.md#browser-connection) · [Music recognition](docs/MUSIC-RECOGNITION.md).
 
@@ -99,4 +100,4 @@ Use only with content you are allowed to download. This project does not impleme
 
 ## License and acknowledgements
 
-Licensed under **[GPL-3.0-or-later](LICENSE)**. Thanks to yt-dlp, FFmpeg, youtubedl-android, Deno, Chromaprint, MusicBrainz, AcoustID, and Cover Art Archive. See [third-party notices](THIRD-PARTY.md) for upstream projects and redistribution obligations.
+Licensed under **[GPL-3.0-or-later](LICENSE)**. Thanks to yt-dlp, FFmpeg, TagLibSharp, jaudiotagger, youtubedl-android, Deno, Chromaprint, MusicBrainz, AcoustID, and Cover Art Archive. See [third-party notices](THIRD-PARTY.md) for upstream projects and redistribution obligations.

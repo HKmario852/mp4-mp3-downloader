@@ -1,6 +1,6 @@
 <p align="center"><img src="../../docs/assets/logo.png" alt="Omni Downloader" width="88" /></p>
 <h1 align="center">Omni Downloader</h1>
-<p align="center">下载影音、管理文件、编辑 MP3 标签，并核对音乐识别结果。</p>
+<p align="center">下载影音、管理文件、编辑音频标签，并核对音乐识别结果。</p>
 
 <p align="center">
   <a href="https://github.com/HKmario852/mp4-mp3-downloader/releases/latest"><img src="https://img.shields.io/github/v/release/HKmario852/mp4-mp3-downloader" alt="Latest release" /></a>
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="../../docs/screenshots/windows-downloads.png"><img src="../../docs/screenshots/windows-downloads.png" alt="下载任务" width="49%" /></a>
-  <a href="../../docs/screenshots/windows-tag-editor.png"><img src="../../docs/screenshots/windows-tag-editor.png" alt="MP3 标签编辑" width="49%" /></a>
+  <a href="../../docs/screenshots/windows-tag-editor.png"><img src="../../docs/screenshots/windows-tag-editor.png" alt="音频标签编辑" width="49%" /></a>
 </p>
 
 *Windows 截图使用合成示例媒体与原创几何封面。点击可放大。*
@@ -29,8 +29,8 @@
 ## 功能
 
 - 📥 使用 yt-dlp 下载视频与播放列表，支持排队、暂停、续传和任务管理。
-- 🎞️ 可选 MP4、MKV、WebM、MP3、M4A、FLAC 或 WAV，实际选项取决于来源。
-- 🏷️ 批量编辑 MP3 标签，嵌入接近正方形的封面，不另存 JPG 文件。
+- 🎞️ 可选 MP4、MKV、WebM、MP3、Opus、M4A、FLAC 或 WAV，实际选项取决于来源。
+- 🏷️ 批量编辑 MP3、Opus、M4A 和 FLAC 标签，嵌入接近正方形的封面，不另存 JPG 文件。
 - 🔎 导入前核对 AcoustID／MusicBrainz 匹配，只应用选中的字段，并可保留撤销记录。
 - 🎧 Windows 会记住添加的音乐文件夹，切换页面时继续播放预览音频。
 - 🌐 通过浏览器扩展，将 Chrome 或 Brave 的 YouTube 链接发送到 Windows 应用。
@@ -55,8 +55,8 @@
 
 1. 在 **新增下載**（新建下载）粘贴视频或播放列表网址，点击 **分析連結**（分析链接）。
 2. 选择格式、质量与保存位置，开始下载。
-3. 在 **已下載** 查看完成的文件。进入 **標籤編輯** 添加 MP3 或文件夹，修改标签与封面。
-4. 识别歌曲时，选中一首 MP3 并点击 **Scan 音訊辨識**。核对候选版本和更改后，只有明确应用的字段与封面才会写入。
+3. 在 **已下載** 查看完成的文件。进入 **標籤編輯** 添加 MP3、Opus、M4A、FLAC 或文件夹，修改标签与封面。
+4. 识别歌曲时，选中一个支持的音频文件并点击 **Scan 音訊辨識**。核对候选版本和更改后，只有明确应用的字段与封面才会写入。
 
 ## 从源码构建
 
@@ -81,6 +81,7 @@ cd mp4-mp3-downloader
 ## 设置
 
 - 在 **設定** 调整保存位置、格式、质量、字幕与封面选项。独立视频缩略图 **默认关闭**。
+- 原生 Opus／M4A 保留源文件的编码音频。MP3 可选 CBR 或 VBR V0；新 MP3 默认 ID3v2.3，可选 ID3v2.4。FLAC 不会提升有损源的音质。[音频管线](../../docs/AUDIO-PIPELINE.md)。
 - Windows 默认在 **下载完成后** 于后台查找 MP3 标签，可改为下载前或关闭。Android 自动标签匹配默认关闭，但封面后备流程仍可能查询 MusicBrainz。
 - 应用提供 **繁体中文与英文** 设置，但翻译尚未完成：部分页面与浏览器扩展仍为中文。README 翻译不代表新增界面语言。
 - 受限内容可能需要具有访问权限的账号所导出的 Netscape 格式 cookies 文件，请勿分享。[浏览器连接](../../docs/DEVELOPMENT.md#browser-connection) · [音乐识别](../../docs/MUSIC-RECOGNITION.md)。
