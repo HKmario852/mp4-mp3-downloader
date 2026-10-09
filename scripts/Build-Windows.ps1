@@ -16,5 +16,9 @@ foreach($name in @('App.exe','App.dll','App.deps.json','App.runtimeconfig.json',
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'updater.ps1') -Destination $output -Force
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $output -Force
+Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY.md') -Destination $output -Force
+$licenseOutput=Join-Path $output 'licenses'
+New-Item -ItemType Directory -Path $licenseOutput -Force | Out-Null
+Get-ChildItem -LiteralPath (Join-Path $root 'docs/licenses') -File | Copy-Item -Destination $licenseOutput -Force
 if(-not $SkipTools){& (Join-Path $PSScriptRoot 'Prepare-Tools.ps1') -Destination $output -Runtime $Runtime}
 Write-Host "Windows build: $output"

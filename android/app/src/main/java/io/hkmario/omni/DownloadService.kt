@@ -40,7 +40,7 @@ class DownloadService:Service() {
         if(Build.VERSION.SDK_INT>=29)startForeground(1,Notices.ongoing(this,0),ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)else startForeground(1,Notices.ongoing(this,0))
         wake=getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"Omni:download").apply{acquire(6*60*60*1000L)}
         cm.registerDefaultNetworkCallback(callback)
-        scope.launch { while(isActive){engine.pump();val count=engine.tasks.value.count{it.state in listOf(State.Queued,State.Analyzing,State.Downloading,State.Processing,State.RetryWait)};try{NotificationManagerCompat.from(this@DownloadService).notify(1,Notices.ongoing(this@DownloadService,count))}catch(_:SecurityException){};if(count==0){stopSelf();break};delay(500)} }
+        scope.launch { while(isActive){engine.pump();val count=engine.tasks.value.count{it.state in listOf(State.Queued,State.Analyzing,State.Downloading,State.Processing,State.RetryWait)};try{NotificationManagerCompat.from(this@DownloadService).notify(1,Notices.ongoing(this@DownloadService,count))}catch(_:SecurityException){};if(count==0&&engine.tasks.value.none{it.state==State.Completed&&it.pendingMetadata&&engine.permitted(it.id)}){stopSelf();break};delay(500)} }
     }
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int)=START_NOT_STICKY
     override fun onBind(intent:Intent?)=null

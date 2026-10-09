@@ -33,7 +33,7 @@ public sealed partial class Downloader
                 throw new IOException("下載紀錄或檔案已變動");
             if(current.IsUserEdited)text.Clear();
             if(current.CoverUserEdited)cover=null;
-            var doc=Id3Document.Read(path);
+            var doc=AudioTagDocument.Read(path);
             var supported=TagReview.Fields.Select(x=>x.Id).ToHashSet();
             text=text.Where(x=>x.Value.Length>0 && supported.Contains(x.Key)).ToDictionary(x=>x.Key,x=>x.Value);
             if(doc.Version==4&&text.Remove("TYER",out var year))text["TDRC"]=year;

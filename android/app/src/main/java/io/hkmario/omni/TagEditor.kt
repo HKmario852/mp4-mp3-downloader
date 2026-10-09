@@ -15,32 +15,31 @@ class TagEditor(private val engine:Engine) {
         if(renameFile&&!delta["TIT2"].isNullOrEmpty())ids.forEach{val t=engine.get(it);require(t.path?.startsWith("content://")!=true||t.directory.startsWith("content://")){"請先加入歌曲所在資料夾，取得重新命名授權"}}
         ids.forEach { id ->
             val task=engine.get(id);val path=task.path ?: throw IOException("找不到音訊檔案");val content=path.startsWith("content://");if(expectedHash!=null)require(TagReview.hash(engine,path)==expectedHash){"檔案已被修改，請重新掃描"}
-            val staged=File(engine.context.cacheDir,"tag-${java.util.UUID.randomUUID()}.mp3")
+            val staged=File(engine.context.cacheDir,"tag-${java.util.UUID.randomUUID()}.${task.extension}")
             val source=if(content){(engine.context.contentResolver.openInputStream(Uri.parse(path))?:throw IOException("檔案權限已失效")).use{i->staged.outputStream().use{i.copyTo(it)}};staged}else File(path)
-            val temp=File(source.parentFile,".${source.name}.edit-${java.util.UUID.randomUUID()}");val backup=File(source.parentFile,".${source.name}.backup-${java.util.UUID.randomUUID()}")
-            val tag=Id3.read(source);delta.forEach{(k,v)->tag.setText(if(k=="TYER"&&tag.version==4)"TDRC"else if(k=="TDOR"&&tag.version==3)"TORY"else k,if(k=="TDOR"&&tag.version==3)v.take(4)else v)};raw.forEach{(k,v)->tag.setRaw(k,v)}
-            if(removeCover)tag.covers(emptyList());if(cover!=null)tag.covers(listOf(Art(cover,when { cover.size>=2 && cover[0]==0xff.toByte() && cover[1]==0xd8.toByte()->"image/jpeg"; cover.size>=12 && String(cover,8,4)=="WEBP"->"image/webp"; else->"image/png" },if(automaticCover)"Album front"else"User cover",3)))
+            val temp=File(source.parentFile,".${source.name}.edit-${java.util.UUID.randomUUID()}");val backup=if(content)File(engine.context.filesDir,"tag-recovery/${java.util.UUID.randomUUID()}.${task.extension}")else File(source.parentFile,".${source.name}.backup-${java.util.UUID.randomUUID()}")
             var destination=path
             try {
+            val tag=AudioTags.read(source);delta.forEach{(k,v)->tag.setText(if(k=="TYER"&&tag.version==4)"TDRC"else if(k=="TDOR"&&tag.version==3)"TORY"else k,if(k=="TDOR"&&tag.version==3)v.take(4)else v)};raw.forEach{(k,v)->tag.setRaw(k,v)}
+            if(removeCover)tag.covers(emptyList());if(cover!=null)tag.covers(listOf(Art(cover,when { cover.size>=2 && cover[0]==0xff.toByte() && cover[1]==0xd8.toByte()->"image/jpeg"; cover.size>=12 && String(cover,8,4)=="WEBP"->"image/webp"; else->"image/png" },if(automaticCover)"Album front"else"User cover",3)))
                 tag.write(source,temp)
                 if(content) {
-                    source.copyTo(backup)
-                    try{(engine.context.contentResolver.openOutputStream(Uri.parse(path),"wt")?:throw IOException("無法寫入標籤")).use{o->temp.inputStream().use{it.copyTo(o)}}}
-                    catch(e:Exception){runCatching{engine.context.contentResolver.openOutputStream(Uri.parse(path),"wt")?.use{o->backup.inputStream().use{it.copyTo(o)}}};throw IOException("標籤寫入失敗，復原備份保留於 ${backup.absolutePath}",e)}
+                    SafTagStorage.durableCopy(source,backup)
+                    SafTagStorage.writeBack(engine.context,Uri.parse(path),temp,backup)
                     if(renameFile&&delta.containsKey("TIT2")&&!delta["TIT2"].isNullOrEmpty()){
                         require(task.directory.startsWith("content://")){"缺少父目錄授權，無法安全重新命名"}
-                        val parent=TreeDocument(engine.context,Uri.parse(task.directory));val title=delta.getValue("TIT2");var newName="$title.mp3";var i=1
-                        while(parent.find(newName)?.let{it.toString()!=path}==true)newName="$title (${i++}).mp3"
+                        val parent=TreeDocument(engine.context,Uri.parse(task.directory));val title=delta.getValue("TIT2");var newName="$title.${task.extension}";var i=1
+                        while(parent.find(newName)?.let{it.toString()!=path}==true)newName="$title (${i++}).${task.extension}"
                         destination=DocumentsContract.renameDocument(engine.context.contentResolver,Uri.parse(path),newName)?.toString()?:throw IOException("標籤已儲存，但提供者未允許重新命名；備份已保留")
                     }
                 } else {
-                    if(renameFile&&delta.containsKey("TIT2")&&!delta["TIT2"].isNullOrEmpty()&&delta["TIT2"]!=source.nameWithoutExtension){var target=File(source.parentFile,delta["TIT2"]+".mp3");var i=1;while(target.exists())target=File(source.parentFile,"${delta["TIT2"]} (${i++}).mp3");destination=target.absolutePath}
+                    if(renameFile&&delta.containsKey("TIT2")&&!delta["TIT2"].isNullOrEmpty()&&delta["TIT2"]!=source.nameWithoutExtension){var target=File(source.parentFile,delta["TIT2"]+".${task.extension}");var i=1;while(target.exists())target=File(source.parentFile,"${delta["TIT2"]} (${i++}).${task.extension}");destination=target.absolutePath}
                     source.copyTo(backup)
                     java.nio.file.Files.move(temp.toPath(),source.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                     try{if(destination!=path)java.nio.file.Files.move(source.toPath(),File(destination).toPath())}catch(e:Exception){backup.copyTo(source,true);throw e}
                 }
                 engine.update(id){it.copy(path=destination,title=if(delta.containsKey("TIT2"))delta.getValue("TIT2")else it.title,artist=if(delta.containsKey("TPE1"))delta.getValue("TPE1")else it.artist,album=if(delta.containsKey("TALB"))delta.getValue("TALB")else it.album,isUserEdited=it.isUserEdited||!automaticCover,coverUserEdited=it.coverUserEdited||(!automaticCover&&(cover!=null||removeCover||raw.keys.any{k->k.substringBefore('#')=="APIC"})))}
-                backup.delete();engine.storage.scan(File(destination))
+                backup.delete();File(backup.path+".uri").delete();engine.storage.scan(File(destination))
             } finally{temp.delete();if(content)staged.delete()}
         }
     } }

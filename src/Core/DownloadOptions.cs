@@ -23,6 +23,8 @@ public sealed partial class Preferences
     public string CompletionAction { get; set; } = "none";
     public string DefaultType { get; set; } = "video";
     public string VideoFormat { get; set; } = "mp4";
+    public string Mp3Encoding { get; set; } = "cbr";
+    public int Id3Version { get; set; } = 3;
     public string AudioFormat { get; set; } = "mp3";
     public string VideoCodec { get; set; } = "auto";
     public bool DownloadSubtitles { get; set; }
@@ -64,7 +66,8 @@ public sealed partial class Preferences
         if(TextScale is < 80 or > 150 || UiScale is < 80 or > 150) throw new ArgumentException("縮放必須介乎 80–150% / Scale must be 80–150%");
         static void One(string value, params string[] allowed) { if (!allowed.Contains(value)) throw new ArgumentException("設定選項無效 / Invalid setting: " + value); }
         One(Theme,"dark","light","system"); One(Language,"zh-Hant","en"); One(DuplicateAction,"ask","overwrite","rename","skip");
-        One(DefaultType,"video","audio","ask"); One(VideoFormat,"mp4","mkv","webm"); One(AudioFormat,"mp3","m4a","flac","wav");
+        One(DefaultType,"video","audio","ask"); One(VideoFormat,"mp4","mkv","webm"); One(AudioFormat,"mp3","opus","m4a","flac","wav");
+        One(Mp3Encoding,"cbr","v0");if(Id3Version is not (3 or 4))throw new ArgumentException("Invalid ID3 version");
         One(Mp3MetadataMode,"after","before","off");
         One(VideoCodec,"auto","h264","h265","av1"); One(ProxyMode,"off","system","custom"); One(SubtitleFormat,"srt","vtt");
         One(CompletionAction,"none","file","folder"); One(AllowedNetwork,"any","wifi","ethernet"); One(SoundName,"default","asterisk","exclamation");
@@ -93,7 +96,7 @@ public static class DownloadOptions
     public static List<string> Format(DownloadJob j, Preferences p, MediaInfo? info=null)
     {
         var a=new List<string>();
-        if(j.Mode==DownloadMode.Mp3) { a.AddRange(["-f","bestaudio/best","-x","--audio-format",j.Extension]); if(j.Extension is "mp3" or "m4a")a.AddRange(["--audio-quality",$"{j.AudioKbps}k"]); if(j.Extension!="mp3" && p.EmbedThumbnail && j.Extension!="wav")a.Add("--embed-thumbnail"); }
+        if(j.Mode==DownloadMode.Mp3) { a.AddRange(AudioPipeline.Arguments(j.Extension,p,j.AudioKbps)); }
         else {
             var cap=$"[height<=?{VideoSelection.Cap(j.Height)}]";
             var codec=p.VideoCodec switch {"h264"=>"[vcodec^=avc]","h265"=>"[vcodec^=hev]","av1"=>"[vcodec^=av01]",_=>""};

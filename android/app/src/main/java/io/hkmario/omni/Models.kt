@@ -6,6 +6,7 @@ import java.util.UUID
 @Serializable enum class State { PendingChoice, Queued, Analyzing, Downloading, Processing, RetryWait, Paused, Completed, Failed, Cancelled }
 @Serializable data class TaskItem(
     val id: String = UUID.randomUUID().toString(), val url: String, val title: String = url,
+    val mp3Encoding:String?=null,val id3Version:Int?=null,val pendingMetadata:Boolean=false,
     val outputFormat: String = "", val workPath: String? = null, val duration: Double? = null,
     val mode: String = "mp4", val height: Int = 1080, val kbps: Int = 320,
     val state: State = State.Queued, val groupId: String? = null, val groupRoot: Boolean = false,
@@ -23,6 +24,7 @@ import java.util.UUID
  val textScale:Int=100,val uiScale:Int=100,val theme:String="dark",val language:String="zh-Hant",val startAtLogin:Boolean=false,val autoUpdate:Boolean=true,val resumeOnStart:Boolean=false,
  val monitorClipboard:Boolean=false,val tempDirectory:String="internal",val duplicateAction:String="rename",val autoRetry:Boolean=true,
  val retryCount:Int=3,val retrySeconds:Int=2,val cleanFailed:Boolean=false,val completionAction:String="none",val defaultType:String="video",
+ val audioMetadataMode:String="after",val mp3Encoding:String="cbr",val id3Version:Int=3,
  val videoFormat:String="mp4",val audioFormat:String="mp3",val videoCodec:String="auto",val downloadSubtitles:Boolean=false,
  val subtitleLanguages:String="en,zh-Hant",val subtitleFormat:String="srt",val embedSubtitles:Boolean=false,val keepThumbnail:Boolean=false,val thumbnailPreferenceVersion:Int=1,
  val embedThumbnail:Boolean=true,val keepMetadata:Boolean=true,val videoNaming:String="{title}",val audioNaming:String="{title}",

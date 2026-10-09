@@ -6,7 +6,12 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 class OptionsTest {
- @Test fun formatAndBitrateStayConsistent(){for(f in listOf("mp3","m4a","flac","wav")){val args=Options.format(TaskItem(url="https://example.org",mode="mp3",outputFormat=f,kbps=192),Prefs());assertTrue(args.contains("--audio-format" to f));assertEquals(f in listOf("mp3","m4a"),args.any{it.first=="--audio-quality"});if(f in listOf("mp3","m4a"))assertTrue(args.contains("--audio-quality" to "192k"))}}
+ @Test fun formatAndBitrateStayConsistent(){for(f in listOf("mp3","opus","m4a","flac","wav")){val args=Options.format(TaskItem(url="https://example.org",mode="mp3",outputFormat=f,kbps=192),Prefs());assertTrue(args.contains("--audio-format" to f));assertEquals(f=="mp3",args.any{it.first=="--audio-quality"});if(f=="mp3")assertTrue(args.contains("--audio-quality" to "192k"))}}
+ @Test fun nativeFormatsAndV0AreExplicit(){
+  for(format in listOf("opus","m4a")){val args=AudioPipeline.arguments(format,Prefs(),320);assertTrue(args.contains("--postprocessor-args" to "ExtractAudio+ffmpeg_o:-c:a copy"));assertFalse(AudioPipeline.selector(format).contains("/bestaudio/best"))}
+  val task=TaskItem(url="https://example.org",mode="mp3",mp3Encoding="v0",id3Version=4)
+  val args=Options.format(task,Prefs());assertTrue(args.contains("--audio-quality" to "0"));assertTrue(args.contains("--postprocessor-args" to "Metadata+ffmpeg_o:-id3v2_version 4"));assertEquals(3,Prefs().id3Version)
+ }
  @Test fun overnightSchedule(){assertTrue(Options.inPeriod("22:00","06:00",LocalTime.of(23,0)));assertTrue(Options.inPeriod("22:00","06:00",LocalTime.of(1,0)));assertFalse(Options.inPeriod("22:00","06:00",LocalTime.of(12,0)))}
  @Test fun legacyPreferencesStillDecode(){val p=Json.decodeFromString<Prefs>("{\"tree\":\"content://old\",\"musicBrainz\":true}");assertEquals("content://old",p.treeFor("mp3"));assertTrue(p.musicBrainz);assertEquals("{title}",p.audioNaming);assertEquals("mp4",p.videoFormat);assertEquals(p,Json.decodeFromString<Prefs>(Json.encodeToString(p)))}
  @Test fun tenDownloadsAllowedAndUnsupportedCodecRejected(){Prefs(concurrency=10).validate();assertTrue(runCatching{Prefs(concurrency=11).validate()}.isFailure);assertTrue(runCatching{Prefs(videoFormat="webm",videoCodec="h264").validate()}.isFailure)}

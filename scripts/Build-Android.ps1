@@ -13,4 +13,7 @@ Get-ChildItem -LiteralPath $source -Recurse -File | Where-Object {$_.FullName.Su
     Copy-Item -LiteralPath $_.FullName -Destination $destination -Force
 }
 Push-Location $BuildDirectory
-try{& .\gradlew.bat assembleDebug assembleDebugAndroidTest testDebugUnitTest --console=plain --no-daemon;if($LASTEXITCODE -ne 0){throw 'Android build failed'};$out=Join-Path $root 'artifacts';New-Item -ItemType Directory -Path $out -Force|Out-Null;Copy-Item -LiteralPath 'app/build/outputs/apk/debug/app-debug.apk' -Destination (Join-Path $out 'OmniDownloader-universal-debug.apk') -Force;$reports=Join-Path $out 'android-test-results';New-Item -ItemType Directory -Path $reports -Force|Out-Null;Copy-Item -Path 'app/build/test-results/testDebugUnitTest/*.xml' -Destination $reports -Force}finally{Pop-Location}
+ $fixtureDirectory=Join-Path $BuildDirectory 'test-fixtures'
+ New-Item -ItemType Directory -Path $fixtureDirectory -Force|Out-Null
+ Copy-Item -Path (Join-Path $root 'tests/Fixtures/audio/*') -Destination $fixtureDirectory -Recurse -Force
+try{& .\gradlew.bat assembleDebug assembleDebugAndroidTest testDebugUnitTest "-PomniTestFixtures=$fixtureDirectory" --console=plain --no-daemon;if($LASTEXITCODE -ne 0){throw 'Android build failed'};$out=Join-Path $root 'artifacts';New-Item -ItemType Directory -Path $out -Force|Out-Null;Copy-Item -LiteralPath 'app/build/outputs/apk/debug/app-debug.apk' -Destination (Join-Path $out 'OmniDownloader-universal-debug.apk') -Force;$reports=Join-Path $out 'android-test-results';New-Item -ItemType Directory -Path $reports -Force|Out-Null;Copy-Item -Path 'app/build/test-results/testDebugUnitTest/*.xml' -Destination $reports -Force}finally{Pop-Location}

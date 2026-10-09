@@ -6,6 +6,7 @@ android {
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     defaultConfig { applicationId = "io.hkmario.omni"; minSdk = 26; targetSdk = 35; versionCode = 23; versionName = "0.2.17"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     buildFeatures { compose = true }
+    sourceSets.getByName("androidTest").assets.srcDir(providers.gradleProperty("omniTestFixtures").getOrElse("../../tests/Fixtures/audio"))
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     packaging { jniLibs.useLegacyPackaging = true; resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/AL2.0", "META-INF/LGPL2.1") }
@@ -25,6 +26,7 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.github.Adonai:jaudiotagger:2.3.14")
     implementation("io.coil-kt:coil-compose:2.7.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.04.01"))

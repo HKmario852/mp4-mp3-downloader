@@ -3,7 +3,7 @@ using Xunit;
 namespace Omni.Tests;
 public sealed class DownloadOptionsTests
 {
-    [Theory][InlineData("mp3",true)][InlineData("m4a",true)][InlineData("flac",false)][InlineData("wav",false)]
+    [Theory][InlineData("mp3",true)][InlineData("m4a",false)][InlineData("opus",false)][InlineData("flac",false)][InlineData("wav",false)]
     public void AudioFormatControlsEncoderAndLossyBitrate(string format,bool bitrate)
     {
         var args=DownloadOptions.Format(new(){Mode=DownloadMode.Mp3,OutputFormat=format,AudioKbps=192},new());

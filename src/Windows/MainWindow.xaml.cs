@@ -25,7 +25,7 @@ public partial class MainWindow : Window
     bool closePrompt; public bool AllowClose { get; set; }
     public MainWindow(Downloader engine, Store store)
     {
-        this.engine = engine; this.store = store; InitializeComponent(); UiKit.Apply(this,engine.Settings); SetMode(engine.Settings.DefaultType=="audio"?DownloadMode.Mp3:DownloadMode.Mp4);
+        this.engine = engine; this.store = store; PreviewSession.FfmpegPath=engine.FfmpegPath; InitializeComponent(); UiKit.Apply(this,engine.Settings); SetMode(engine.Settings.DefaultType=="audio"?DownloadMode.Mp3:DownloadMode.Mp4);
         engine.ResolveMusic=(choices,ct)=>Dispatcher.InvokeAsync(async()=>{Reveal();return await new MusicMatchWindow(this,choices).Ask(ct);}).Task.Unwrap();
         engine.NetworkPermitted=DesktopIntegration.NetworkAllowed;engine.ResolveDuplicate=ResolveDuplicate;engine.Completed+=j=>Dispatcher.BeginInvoke(()=>DesktopIntegration.Completion(j,engine.Settings));
         timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) }; timer.Tick += (_, _) => Refresh(); timer.Start();
@@ -112,15 +112,15 @@ public partial class MainWindow : Window
     {
         var selected = QualityBox.SelectedValue is int q ? q : mode == DownloadMode.Mp3 ? engine.Settings.AudioKbps : engine.Settings.VideoHeight;
         var maxHeight = previewInfo?.Formats?.Where(f => f.Video && f.Height <= 2160).Select(f => f.Height ?? 0).DefaultIfEmpty(0).Max() ?? 0;
-        QualityBox.IsEnabled=!(mode==DownloadMode.Mp3&&engine.Settings.AudioFormat is "flac" or "wav");
+        QualityBox.IsEnabled=!(mode==DownloadMode.Mp3&&engine.Settings.AudioFormat is "flac" or "wav" or "opus" or "m4a" || mode==DownloadMode.Mp3&&engine.Settings.Mp3Encoding=="v0");
         var qualities = mode == DownloadMode.Mp3 ? new[] {128,192,256,320} : new[] {720,1080,1440,2160,0}.Where(n => n == 0 || maxHeight == 0 || n <= maxHeight).ToArray();
-        QualityBox.ItemsSource = qualities.Select(n => new QualityOption(n, mode == DownloadMode.Mp3 ? (engine.Settings.AudioFormat is "flac" or "wav" ? UiKit.T("無損輸出","Lossless output") : $"{n} kbps") : n == 0 ? "最佳（最高 4K）" : n == 2160 ? "2160p · 4K" : $"{n}p", SizeEstimator.Label(EstimateCurrent(n)))).ToArray();
+        QualityBox.ItemsSource = qualities.Select(n => new QualityOption(n, mode == DownloadMode.Mp3 ? (engine.Settings.AudioFormat is "flac" or "wav" or "opus" or "m4a" || mode==DownloadMode.Mp3&&engine.Settings.Mp3Encoding=="v0" ? AudioPipeline.Quality(engine.Settings.AudioFormat,engine.Settings,selected) : $"{n} kbps") : n == 0 ? "最佳（最高 4K）" : n == 2160 ? "2160p · 4K" : $"{n}p", SizeEstimator.Label(EstimateCurrent(n)))).ToArray();
         QualityBox.SelectedValue = qualities.Contains(selected) ? selected : qualities.Last(); UpdateEstimate();
     }
     void QualityChanged(object sender, SelectionChangedEventArgs e) { if (EstimateLabel is not null) UpdateEstimate(); }
     long? EstimateCurrent(int quality) {
         var p=engine.Settings;
-        if(mode==DownloadMode.Mp3&&p.AudioFormat is "flac" or "wav")return null;
+        if(mode==DownloadMode.Mp3&&p.AudioFormat is "flac" or "wav" or "opus" or "m4a" || mode==DownloadMode.Mp3&&p.Mp3Encoding=="v0")return null;
         if(mode==DownloadMode.Mp4&&(p.VideoFormat!="mp4"||p.VideoCodec!="auto"))return null;
         return SizeEstimator.Estimate(previewInfo,mode,quality);
     }
@@ -200,8 +200,8 @@ public partial class MainWindow : Window
     void EditTagsClick(object s, RoutedEventArgs e)
     {
         try {
-            var selected = SelectedJobs().Where(j => j.State == JobState.Completed && j.Extension == "mp3").ToArray();
-            if (selected.Length == 0) { StatusLabel.Text = "請先選取一首或多首 MP3。"; return; }
+            var selected = SelectedJobs().Where(j => j.State == JobState.Completed && AudioPipeline.Supported(j.Extension)).ToArray();
+            if (selected.Length == 0) { StatusLabel.Text = "請先選取一首或多首音訊。"; return; }
             if (selected.Any(j => !File.Exists(j.FilePath))) { StatusLabel.Text = "部分所選檔案已移動或刪除，請重新選取。"; return; }
             _=OpenTagSelection(selected);
         } catch (Exception ex) { StatusLabel.Text = "無法開啟標籤編輯：" + ex.Message; }
@@ -209,7 +209,7 @@ public partial class MainWindow : Window
     void FileDoubleClick(object s, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (ItemsControl.ContainerFromElement((ItemsControl)s, e.OriginalSource as DependencyObject) is not DataGridRow) return;
-        if (SelectedJobs().FirstOrDefault()?.Extension == "mp3") EditTagsClick(s, e);
+        if (AudioPipeline.Supported(SelectedJobs().FirstOrDefault()?.Extension??"")) EditTagsClick(s, e);
         else FolderClick(s, e);
     }
     async void SettingsClick(object s,RoutedEventArgs e){if(!await LeaveSettings())return;var previousPage=PageHost.Content;var previousTags=tagEditorView;var previousLibrary=libraryView;tagEditorView=null;libraryView=null;settingsView=new SettingsView(this,engine,()=>{UiKit.Apply(this,engine.Settings);UpdateNavigation();SetMode(mode);ApplyLanguage();});settingsView.Back=async()=>{if(await LeaveSettings()){if(previousPage is null)ShowDownloads();else{RestoreMenu();tagEditorView=previousTags;libraryView=previousLibrary;PageHost.Content=previousPage;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;UiKit.Typography(this,engine.Settings.TextScale);}}};MainNav.Visibility=Visibility.Collapsed;NavColumn.Width=new GridLength(0);Grid.SetColumn(PageHost,0);Grid.SetColumnSpan(PageHost,3);PageHost.Content=settingsView;PageHost.Visibility=Visibility.Visible;DownloadArea.Visibility=Details.Visibility=Visibility.Collapsed;}

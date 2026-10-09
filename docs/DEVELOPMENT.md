@@ -45,6 +45,10 @@ npm run test:browser
 
 See [verification records](VERIFICATION.md) and the version-specific `VERIFICATION-*.md` documents for the actual scope of previous checks. Those records describe a particular build, not a guarantee for every device or website.
 
+## Audio pipeline
+
+See [multi-format audio, tag services, SAF recovery and verification](AUDIO-PIPELINE.md). MP3 defaults to ID3v2.3; ID3v2.4 is optional for new downloads.
+
 ## Browser connection
 
 1. Extract and manually launch the Windows app once.

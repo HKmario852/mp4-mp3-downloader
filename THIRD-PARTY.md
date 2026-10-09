@@ -29,3 +29,9 @@
 - Android 本機 Chromaprint 1.5.1：[上游版本](https://github.com/acoustid/chromaprint/tree/v1.5.1)，MIT；內含 KissFFT（BSD-3-Clause）及 FFmpeg avresample（LGPL-2.1-or-later）。完整來源及版權聲明在 `android/app/src/main/cpp/vendor/chromaprint-1.5.1`，JNI 與 CMake 建置入口在相鄰目錄。Android NDK 27、CMake 3.22.1，建置四種 ABI。APK assets/licenses 保留授權聲明。
 - Windows 使用現有 GPL FFmpeg 的 Chromaprint muxer，無額外常駐服務。
 - [MusicBrainz Web Service](https://musicbrainz.org/doc/MusicBrainz_API) 用於公開中繼資料查詢；[AcoustID](https://acoustid.org/webservice) 用於指紋查詢，需使用應用程式 client key。此版本不附帶第三方應用程式或短期測試 key。
+
+## Multi-format audio tags
+
+- TagLibSharp 2.3.0 (NuGet `TagLibSharp`): [source](https://github.com/mono/taglib-sharp/tree/TaglibSharp-2.3.0), LGPL-2.1-only according to package metadata. [License copy](docs/licenses/TagLibSharp-LGPL-2.1.txt). Windows publishes the managed library together with OMNI; build dependencies are pinned in `src/Core/Core.csproj`.
+- jaudiotagger Android fork 2.3.14 (JitPack `com.github.Adonai:jaudiotagger:2.3.14`): [source and Gradle build](https://github.com/Adonai/jaudiotagger/tree/2.3.14), LGPL-2.1-or-later. [Upstream notice](docs/licenses/Jaudiotagger-LICENSE.txt) and [LGPL text](android/app/src/main/assets/licenses/LGPL-2.1.txt). The fork includes JCodec under the [FreeBSD license](docs/licenses/JCodec-LICENSE.txt). Android APK assets retain these notices.
+- `Mp4TagPatch.kt` is an OMNI implementation using the library's field serializers; it avoids the fork's media-flattening writer, preserves unrelated atoms, and leaves media offsets unchanged.

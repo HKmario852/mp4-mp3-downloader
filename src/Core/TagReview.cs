@@ -11,6 +11,7 @@ public static class TagReview
         ("TSOT","標題排序方式"),("TSOP","演出者排序方式")];
     public static string Frame(string id,byte version)=>id=="TYER"&&version==4?"TDRC":id=="TDOR"&&version==3?"TORY":id;
     public static Dictionary<string,string> Values(Id3Document doc)=>Fields.ToDictionary(f=>f.Id,f=>doc.Text(Frame(f.Id,doc.Version)));
+    public static Dictionary<string,string> Values(AudioTagDocument doc)=>Fields.ToDictionary(f=>f.Id,f=>doc.Text(Frame(f.Id,doc.Version)));
     public static async Task<string> Hash(string path){await using var stream=File.OpenRead(path);return Convert.ToHexString(await SHA256.HashDataAsync(stream));}
 }
 
@@ -23,8 +24,8 @@ public sealed class TagReviewUndo
         var path=job.FilePath??throw new IOException("找不到檔案");
         if(await TagReview.Hash(path)!=originalHash)throw new IOException("檔案已被其他操作修改，請返回編輯再掃描。");
         var before=Json.Decode<DownloadJob>(Json.Encode(job));var directory=Path.Combine(store.DataDirectory,"tag-undo");Directory.CreateDirectory(directory);
-        var backup=Path.Combine(directory,Guid.NewGuid()+".mp3");if(keep)File.Copy(path,backup);
-        try{var doc=Id3Document.Read(path);var mapped=selected.ToDictionary(p=>TagReview.Frame(p.Key,doc.Version),p=>p.Key=="TDOR"&&doc.Version==3&&p.Value.Length>=4?p.Value[..4]:p.Value);
+        var backup=Path.Combine(directory,Guid.NewGuid()+Path.GetExtension(path));if(keep)File.Copy(path,backup);
+        try{var doc=AudioTagDocument.Read(path);var mapped=selected.ToDictionary(p=>TagReview.Frame(p.Key,doc.Version),p=>p.Key=="TDOR"&&doc.Version==3&&p.Value.Length>=4?p.Value[..4]:p.Value);
             await new TagEditor(store).Apply([job],new(mapped,Covers:cover is null?null:[cover],RenameFile:false),store.Load().Any(j=>j.Id==job.Id),expectedHash:originalHash);
             if(!keep)return null;var undo=new TagReviewUndo(backup,path,await TagReview.Hash(path),before);
             File.WriteAllText(backup+".json",Json.Encode(new{Path=path,Before=before,AfterHash=undo.afterHash}));return undo;

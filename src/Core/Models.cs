@@ -75,7 +75,7 @@ public sealed class DownloadJob
     public bool IsGroupRoot { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? CompletedAt { get; set; }
-    [JsonIgnore] public string Quality => Mode == DownloadMode.Mp3 ? (Extension is "flac" or "wav" ? "Lossless" : $"{AudioKbps} kbps") : Height == 0 ? "最佳" : $"{Height}p";
+    [JsonIgnore] public string Quality => Mode == DownloadMode.Mp3 ? AudioPipeline.Quality(Extension,Options,AudioKbps) : Height == 0 ? "最佳" : $"{Height}p";
     [JsonIgnore] public string Format => Extension.ToUpperInvariant();
     [JsonIgnore] public string StatusText => State switch { JobState.PendingChoice => "等待選擇", JobState.Queued => "排隊中", JobState.Analyzing => "分析中", JobState.Downloading => $"下載中 {Progress:F0}%", JobState.Processing => "處理中", JobState.RetryWait => $"連線異常，將在 {Math.Max(0, (int)((RetryAt ?? DateTimeOffset.UtcNow) - DateTimeOffset.UtcNow).TotalSeconds)} 秒後重試 ({Retry}/3)", JobState.Paused => "已暫停", JobState.Completed => "已完成", JobState.Cancelled => "已取消", _ => "下載失敗" };
     [JsonIgnore] public string SpeedText => Speed <= 0 ? "0 MB/s" : $"{Speed / 1_000_000:F2} MB/s";

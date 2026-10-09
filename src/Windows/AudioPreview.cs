@@ -46,7 +46,7 @@ public sealed class AudioPreview : StackPanel
             seek.Maximum=Math.Max(1,Session.Duration);seek.IsEnabled=Session.Ready;
             if(!seek.IsMouseCaptureWithin)seek.Value=Math.Clamp(Session.Position,0,seek.Maximum);
             volume.Value=Session.Volume;
-            var label=Session.Playing?T("暫停試聽","Pause preview"):T("播放試聽","Play preview");
+            var label=Session.Preparing?T("取消準備試聽","Cancel preview preparation"):Session.Playing?T("暫停試聽","Pause preview"):T("播放試聽","Play preview");
             play.IsEnabled=Session.FilePath is not null&&File.Exists(Session.FilePath);
             if(playbackLabel!=label){playbackLabel=label;play.Content=IconLabel(Session.Playing?"pause":"play",label);System.Windows.Automation.AutomationProperties.SetName(play,label);}
             var percentage=$"{Math.Round(Session.Volume*100)}%";level.Text=percentage;volume.ToolTip=T("音量：","Volume: ")+percentage;

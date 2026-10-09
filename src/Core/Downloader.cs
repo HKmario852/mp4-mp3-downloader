@@ -36,7 +36,7 @@ public sealed partial class Downloader : IAsyncDisposable
         var selected = ids.ToHashSet(); var saved = store.Load().Where(j => selected.Contains(j.Id)).ToArray();
         lock (gate) foreach (var fresh in saved) { var index = jobs.FindIndex(j => j.Id == fresh.Id && j.State == JobState.Completed); if (index >= 0) jobs[index] = fresh; }
     }
-    public bool ToolsReady => File.Exists(Path.Combine(binaryDir, "yt-dlp.exe")) && File.Exists(Path.Combine(binaryDir, "ffmpeg.exe"));
+    public bool ToolsReady => File.Exists(Path.Combine(binaryDir, "yt-dlp.exe")) && File.Exists(Path.Combine(binaryDir, "ffmpeg.exe")) && File.Exists(Path.Combine(binaryDir, "ffprobe.exe"));
     public async Task<IntakeAck> Accept(IntakeRequest request)
     {
         Validation.Request(request); await intake.WaitAsync();
@@ -103,7 +103,7 @@ public sealed partial class Downloader : IAsyncDisposable
         var work = JobWork(j); j.WorkPath=work; store.Save(j); System.IO.Directory.CreateDirectory(work); var cookiePath = Path.Combine(work, "cookies.txt");
         try
         {
-            if (!ToolsReady) throw new IOException("缺少 yt-dlp.exe 或 ffmpeg.exe，請先執行下載工具準備腳本");
+            if (!ToolsReady) throw new IOException("缺少 yt-dlp.exe、ffmpeg.exe 或 ffprobe.exe，請先執行下載工具準備腳本");
             var auth = new List<string>();
             if (credentials.TryGetValue(j.Id, out var cookies)) { await File.WriteAllTextAsync(cookiePath, Validation.Netscape(cookies), ct); auth.AddRange(["--cookies", cookiePath]); }
             else if (j.HadCredentials) throw new IOException("登入憑證已過期，請從擴充功能重新傳送");
@@ -122,9 +122,11 @@ public sealed partial class Downloader : IAsyncDisposable
             ct.ThrowIfCancellationRequested(); j.State = JobState.Processing; j.Speed = 0; j.Eta = 0; store.Save(j);
             var processingWatch=Stopwatch.StartNew();
             var file = Path.Combine(work,"media."+j.Extension); if(!File.Exists(file))throw new IOException("下載完成但找不到輸出檔案");
-            if (j.Extension == "mp3")
+            if (AudioPipeline.Supported(j.Extension))
             {
-                var doc = Id3Document.Read(file);
+                await AudioPipeline.Validate(file,FfmpegPath,info.Duration,ct);
+                if(j.Extension=="mp3")await AudioTagDocument.SetNewMp3Version(file,options.Id3Version,ct);
+                var doc = AudioTagDocument.Read(file);
                 var covers = new List<Cover>();
                 if (options.Mp3MetadataMode=="before") {
                     j.MetadataStatus = "MusicBrainz：正在查詢歌曲及專輯封面…"; store.Save(j);
@@ -135,7 +137,7 @@ public sealed partial class Downloader : IAsyncDisposable
                     if (!j.IsUserEdited) { if (metadata.Title is { Length: > 0 }) j.Title = metadata.Title; if (metadata.Artist is { Length: > 0 }) j.Artist = metadata.Artist; if (metadata.Album is { Length: > 0 }) j.Album = metadata.Album; }
                     if (metadata.Cover is not null) covers.Add(metadata.Cover);
                     store.Save(j);
-                } else j.MetadataStatus = options.Mp3MetadataMode=="after"?"MP3 已下載；標籤與封面稍後辨識":"MusicBrainz：已在設定關閉";
+                } else j.MetadataStatus = options.Mp3MetadataMode=="after"?"音訊已下載；標籤與封面稍後辨識":"MusicBrainz：已在設定關閉";
                 if(options.KeepMetadata){doc.SetText("TIT2", j.Title); doc.SetText("TPE1", j.Artist); doc.SetText("TALB", j.Album);}
                 covers=covers.Where(c=>AlbumArtwork.Accept(c.Bytes)).ToList();
                 var sourceArt=options.Mp3MetadataMode switch {"after"=>null,"off"=>await AlbumArtwork.Source(info,ct),_=>await FindSourceArtwork(j.Url,info,auth,ct)};
@@ -147,7 +149,7 @@ public sealed partial class Downloader : IAsyncDisposable
                 System.IO.Directory.CreateDirectory(j.Directory);
             }
             ct.ThrowIfCancellationRequested(); System.IO.Directory.CreateDirectory(j.Directory);
-            if(j.Extension=="mp3"&&options.Mp3MetadataMode=="after") { j.PendingMetadata=true; deferredInfo[j.Id]=info; }
+            if(AudioPipeline.Supported(j.Extension)&&options.Mp3MetadataMode=="after") { j.PendingMetadata=true; deferredInfo[j.Id]=info; }
             if(!await PublishFinal(j,file,work,options,ct,()=>processingWatch.Elapsed.TotalSeconds))return;
             if (j.GroupId is null && Settings.NotifyComplete) Notify?.Invoke("下載完成：" + j.Title);
             Completed?.Invoke(j);
@@ -158,7 +160,7 @@ public sealed partial class Downloader : IAsyncDisposable
     }
     async Task<T> RetryOperation<T>(DownloadJob j,Preferences p,Func<Task<T>> operation,CancellationToken ct) {
         for(int attempt=0;;attempt++)try{return await operation();}
-        catch(DownloadException e)when(p.AutoRetry&&attempt<p.RetryCount&&!e.Stderr.Contains("403")&&!e.Stderr.Contains("Sign in",StringComparison.OrdinalIgnoreCase)){
+        catch(DownloadException e)when(p.AutoRetry&&attempt<p.RetryCount&&!e.Stderr.Contains("403")&&!e.Stderr.Contains("Requested format is not available",StringComparison.OrdinalIgnoreCase)&&!e.Stderr.Contains("Sign in",StringComparison.OrdinalIgnoreCase)){
             j.Retry=attempt+1;j.State=JobState.RetryWait;j.Speed=0;j.Eta=0;var seconds=Math.Min(3600,p.RetrySeconds*Math.Pow(2,attempt));j.RetryAt=DateTimeOffset.UtcNow.AddSeconds(seconds);store.Save(j);await Task.Delay(TimeSpan.FromSeconds(seconds),ct);
         }
     }

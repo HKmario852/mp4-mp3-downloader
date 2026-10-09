@@ -20,16 +20,16 @@ public static class TagLibrary
             {
                 if (source.IsFolder && !Directory.Exists(source.Path)) { unavailable.Add(source.Path); continue; }
                 var files = source.IsFolder
-                    ? Directory.EnumerateFiles(source.Path, "*.mp3", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint })
+                    ? Directory.EnumerateFiles(source.Path, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint })
                     : new[] { source.Path };
                 foreach (var file in files)
                 {
                     var path = System.IO.Path.GetFullPath(file);
-                    if (!System.IO.Path.GetExtension(path).Equals(".mp3", StringComparison.OrdinalIgnoreCase) || !seen.Add(path)) continue;
+                    if (!AudioPipeline.Supported(System.IO.Path.GetExtension(path)) || !seen.Add(path)) continue;
                     try
                     {
-                        var doc = Id3Document.Read(path);
-                        songs.Add(new DownloadJob { FilePath = path, Title = string.IsNullOrEmpty(doc.Text("TIT2")) ? System.IO.Path.GetFileNameWithoutExtension(path) : doc.Text("TIT2"), Artist = doc.Text("TPE1"), Album = doc.Text("TALB"), Mode = DownloadMode.Mp3, OutputFormat = "mp3", State = JobState.Completed, CompletedAt = new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero) });
+                        var doc = AudioTagDocument.Read(path);
+                        songs.Add(new DownloadJob { FilePath = path, Title = string.IsNullOrEmpty(doc.Text("TIT2")) ? System.IO.Path.GetFileNameWithoutExtension(path) : doc.Text("TIT2"), Artist = doc.Text("TPE1"), Album = doc.Text("TALB"), Mode = DownloadMode.Mp3, OutputFormat = System.IO.Path.GetExtension(path).TrimStart('.').ToLowerInvariant(), State = JobState.Completed, CompletedAt = new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero) });
                     }
                     catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { unavailable.Add(path); }
                 }

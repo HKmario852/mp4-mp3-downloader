@@ -11,7 +11,7 @@ public sealed class TagWindow : Window
     public TagWindow(Window owner, Store store, DownloadJob[] jobs)
     {
         Owner = owner; Title = $"MP3 標籤編輯 · {jobs.Length} 首"; Width = 630; Height = 760; Background = owner.Background; Foreground = owner.Foreground; Resources = owner.Resources; WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var panel = new StackPanel { Margin = new Thickness(22) }; Content = new ScrollViewer { Content = panel }; var delta = new Dictionary<string, string>(); var doc = Id3Document.Read(jobs[0].FilePath!); byte[]? cover = null;
+        var panel = new StackPanel { Margin = new Thickness(22) }; Content = new ScrollViewer { Content = panel }; var delta = new Dictionary<string, string>(); var doc = AudioTagDocument.Read(jobs[0].FilePath!); byte[]? cover = null;
         panel.Children.Add(new TextBlock { Text = $"編輯 {jobs.Length} 首音訊", FontSize = 24 }); panel.Children.Add(new TextBlock { Text = "只儲存有改動的欄位。清空會保留空標籤；音軌編號不會遞增。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 14) });
         var error = new TextBlock { Name = "TitleError", Foreground = Brushes.Salmon, TextWrapping = TextWrapping.Wrap }; var save = new Button { Name = "SaveTags", Content = "儲存", Background = (Brush)FindResource("Accent") };
         bool saving = false;

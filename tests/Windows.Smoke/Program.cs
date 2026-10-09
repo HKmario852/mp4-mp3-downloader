@@ -27,6 +27,14 @@ public static class Program
             }
             var p=store.Preferences();p.Mp3Directory=Path.Combine(output,"music");p.Mp4Directory=Path.Combine(output,"video");if(args.Contains("--v27-regression"))p.Language="en";store.SavePreferences(p);
         }
+        if(args.Contains("--multi-format-regression")){
+            foreach(var ext in new[]{"mp3","opus","m4a","flac"}){
+                var path=Path.Combine(output,"Demo."+ext);
+                var codec=ext switch{"opus"=>"libopus","m4a"=>"aac","flac"=>"flac",_=>"libmp3lame"};
+                ProcessRunner.Run(Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),["-y","-f","lavfi","-i","sine=frequency=440:duration=20","-c:a",codec,"-metadata","title=Demo tone","-metadata","artist=Demo artist",path],null,CancellationToken.None).GetAwaiter().GetResult();
+                store.Save(new DownloadJob{Id="format-"+ext,Title="Demo "+ext,OutputFormat=ext,Mode=DownloadMode.Mp3,State=JobState.Completed,FilePath=path,Duration=20,CompletedAt=DateTimeOffset.UtcNow});
+            }
+        }
         if (args.Contains("--failed-count-regression")) store.Save(new DownloadJob{Id="cc000000000000000000000000000001",Title="Demo task",State=JobState.Paused});
         if (args.Contains("--update-regression")) { store.Save(new DownloadJob{Id="paused",Title="暫停測試",State=JobState.Paused}); store.Save(new DownloadJob{Id="failed",Title="失敗測試",State=JobState.Failed}); }
         var engine = new Downloader(store, Path.GetFullPath(args[1]), Path.Combine(output, "smoke-work"));
@@ -57,6 +65,7 @@ public static class Program
                     await engine.DisposeAsync();window.Close();app.Shutdown(result.State==MusicLookupState.Matched?0:3);return;
                 }
                 if(args.Contains("--live-scan")){var result=await new MusicMetadata().Scan(args[3],Path.Combine(Path.GetFullPath(args[1]),"ffmpeg.exe"),AcoustIdClient.Resolve(""),null,CancellationToken.None,true);File.WriteAllText(Path.Combine(output,"live-scan.json"),Json.Encode(new{result.State,result.Choices}));await engine.DisposeAsync();window.Close();app.Shutdown(result.Choices?.Length>0?0:3);return;}
+                if(args.Contains("--multi-format-regression")){await CheckMultiFormat(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--review-regression")){await CheckReview(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v27-regression")){await CheckV27(window,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v26-regression")){await CheckV26(window,engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
@@ -86,6 +95,40 @@ public static class Program
             catch (Exception e) { File.WriteAllText(Path.Combine(output, "smoke-error.txt"), e.ToString()); await engine.DisposeAsync(); app.Shutdown(1); }
         };
         Environment.ExitCode = app.Run(window);
+    }
+    static async Task CheckMultiFormat(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output)
+    {
+        const System.Reflection.BindingFlags flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        async Task Idle()=>await app.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        void Check(bool ok,string message){if(!ok)throw new Exception(message);}
+        window.Width=1440;window.Height=940;
+        ((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Idle();
+        var editor=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;while(editor.Busy)await Task.Delay(20);
+        foreach(var ext in new[]{"mp3","opus","m4a","flac"}){
+            await (Task)typeof(TagEditorView).GetMethod("SelectSongs",flags)!.Invoke(editor,new object[]{new[]{"format-"+ext}})!;
+            var title=Descendants(editor).OfType<TextBox>().Single(b=>b.Name=="TIT2");Check(title.Text=="Demo tone","Fresh "+ext+" metadata missing");
+            var raw=(TextBox)typeof(TagEditorView).GetField("raw",flags)!.GetValue(editor)!;Check(raw.IsEnabled==(ext=="mp3"),"Raw ID3 gating wrong");
+            var song=store.Load().Single(j=>j.Id=="format-"+ext);var hash=await TagReview.Hash(song.FilePath!);
+            window.PreviewSession.SetVolume(0);window.PreviewSession.TogglePlayback();
+            for(int i=0;i<160&&!window.PreviewSession.Ready;i++)await Task.Delay(50);
+            Check(window.PreviewSession.Ready,"Playback unavailable for "+ext);window.PreviewSession.Stop();
+            title.Text="Demo unsaved draft";
+            window.MusicServiceFactory=()=>new MusicMetadata(new System.Net.Http.HttpClient(new ReviewHandler(File.ReadAllBytes("tests/Fixtures/audio/cover.png"))));
+            window.OpenAcoustIdReview(editor,song);await Idle();var review=(AcoustIdReviewView)window.Content;
+            var apply=(Button)typeof(AcoustIdReviewView).GetField("apply",flags)!.GetValue(review)!;
+            for(int i=0;i<300&&!apply.IsEnabled;i++)await Task.Delay(30);
+            Check(apply.IsEnabled,"Review failed for "+ext);Check(app.Windows.Count==1&&window.ActiveView=="acoustid-review","Review opened another window");
+            Check(!((FrameworkElement)window.FindName("MainNav")).IsVisible,"Review sidebar visible");
+            if(ext=="opus"){Capture(window,Path.Combine(output,"opus-review.png"));window.Width=1050;await Idle();Capture(window,Path.Combine(output,"opus-review-narrow.png"));window.Width=1440;}
+            review.Back();await Idle();Check(title.Text=="Demo unsaved draft","Review lost draft");Check(hash==await TagReview.Hash(song.FilePath!),"Preview/review wrote file");
+            await (Task)typeof(TagEditorView).GetMethod("LoadSelection",flags)!.Invoke(editor,null)!;
+        }
+        Capture(window,Path.Combine(output,"four-format-editor.png"));
+        ((Button)window.FindName("SettingsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Idle();
+        var settings=(SettingsView)((ContentControl)window.FindName("PageHost")).Content;
+        var formatButton=Descendants(settings).OfType<Button>().First(b=>Descendants(b).OfType<TextBlock>().Any(t=>t.Text=="格式"));formatButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Idle();
+        Check(Descendants(settings).OfType<ComboBox>().SelectMany(c=>c.Items.OfType<ComboBoxItem>()).Any(i=>Equals(i.Content,"ID3v2.4")),"Optional ID3v2.4 setting missing");Capture(window,Path.Combine(output,"audio-settings.png"));
+        File.WriteAllText(Path.Combine(output,"multi-format-checks.json"),Json.Encode(new{passed=true,formats=new[]{"mp3","opus","m4a","flac"},checks=new[]{"fresh tags","raw ID3 gate","real preview playback","same-window review","sidebar hidden","draft preserved","no pre-apply writes","optional ID3v2.4"}}));
     }
     static async Task CheckFailedCount(MainWindow window,Downloader engine,Store store,System.Windows.Application app,string output)
     {
