@@ -42,11 +42,13 @@ Get the packages from **[the latest release](https://github.com/HKmario852/mp4-m
 | Platform | Requirements | Install |
 | --- | --- | --- |
 | Windows | Windows 10 (2004+) or 11, x64 | Extract the Windows ZIP into a writable folder. Run `OMNI.exe`; keep the bundled files together. |
-| Android | Android 8.0+ (API 26) | Install the universal debug APK. Choose a shared folder to keep downloads after uninstalling. |
+| Android | Android 8.0+ (API 26) | Install the universal APK. Choose a shared folder to keep downloads after uninstalling. |
 | Browser extension | Chrome / Brave on Windows | Load the unpacked extension and connect its ID in app settings. [Setup guide](docs/DEVELOPMENT.md#browser-connection). |
 
 > **Note:**
-> The Windows executable is unsigned. Android packages are debug builds for testing; device and background-service verification is incomplete.
+> The Windows executable is unsigned. From 0.2.21 the Android APK is a signed release build; if you installed an earlier test (debug) build, uninstall it once before installing, because Android cannot update across signing keys. Device and background-service verification is incomplete.
+>
+> Both apps keep yt-dlp up to date between releases (Settings › About, checked daily by default), verifying each download against GitHub's SHA-256.
 
 > [!NOTE]
 > Older releases use `App.exe`. For the first update to the new name, exit the app and extract the complete Windows package into your existing folder, keeping `data/` and `native-host.json`. Then start `OMNI.exe`.
@@ -76,7 +78,7 @@ For Android, also install **JDK 21**, **Android SDK / build-tools 35**, **NDK 27
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-Output: `artifacts/OmniDownloader-universal-debug.apk`. The script also builds instrumentation tests and runs JVM unit tests. See [the development guide](docs/DEVELOPMENT.md) for architecture, checks, and packaging.
+Output: `artifacts/OmniDownloader-universal.apk` (signed with your release key; run `./scripts/Setup-AndroidSigning.ps1` once to create it) and `artifacts/OmniDownloader-universal-debug.apk`. The script also builds instrumentation tests and runs JVM unit tests. See [the development guide](docs/DEVELOPMENT.md) for architecture, checks, and packaging.
 
 ## Configuration
 

@@ -42,11 +42,13 @@
 | 플랫폼 | 요구 사항 | 설치 방법 |
 | --- | --- | --- |
 | Windows | Windows 10(2004 이상) 또는 11, x64 | Windows ZIP을 쓰기 가능한 폴더에 풀고 `OMNI.exe`를 실행합니다. 포함된 파일은 같은 폴더에 두세요. |
-| Android | Android 8.0 이상(API 26) | universal debug APK를 설치합니다. 앱 삭제 후에도 다운로드를 보관하려면 공유 폴더를 선택하세요. |
+| Android | Android 8.0 이상(API 26) | universal APK를 설치합니다. 앱 삭제 후에도 다운로드를 보관하려면 공유 폴더를 선택하세요. |
 | 브라우저 확장 | Windows의 Chrome／Brave | 압축을 푼 확장을 로드하고 앱 설정에서 ID를 연결합니다. [설정 안내](../../docs/DEVELOPMENT.md#browser-connection). |
 
 > **참고:**
-> Windows 실행 파일은 서명되지 않았습니다. Android 패키지는 테스트용 debug 빌드이며, 실제 기기와 백그라운드 서비스 검증은 아직 완료되지 않았습니다.
+> Windows 실행 파일은 서명되지 않았습니다. 0.2.21부터 Android APK는 서명된 릴리스 빌드입니다. 이전 테스트용(debug) 빌드를 설치했다면 Android가 서명 키가 다른 업데이트를 허용하지 않으므로 한 번 삭제한 뒤 설치하세요. 실제 기기와 백그라운드 서비스 검증은 아직 완료되지 않았습니다.
+>
+> 두 앱 모두 릴리스 사이에도 yt-dlp를 최신으로 유지합니다(설정 › 정보, 기본 매일 확인). 다운로드는 GitHub의 SHA-256으로 검증합니다.
 
 > [!NOTE]
 > 이전 버전은 `App.exe`를 사용합니다. 새 이름으로 처음 업데이트할 때는 앱을 완전히 종료하고 `data/`와 `native-host.json`을 유지한 채 전체 Windows 패키지를 기존 폴더에 압축 해제한 후 `OMNI.exe`를 실행하세요.
@@ -76,7 +78,7 @@ Android에는 **JDK 21**, **Android SDK／build-tools 35**, **NDK 27.0.12077973*
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-출력: `artifacts/OmniDownloader-universal-debug.apk`. instrumentation 테스트를 빌드하고 JVM 단위 테스트도 실행합니다. 구조, 검증, 패키징은 [개발 안내](../../docs/DEVELOPMENT.md)를 참고하세요.
+출력: `artifacts/OmniDownloader-universal.apk`(릴리스 키로 서명, 먼저 `./scripts/Setup-AndroidSigning.ps1`을 한 번 실행해 생성)와 `artifacts/OmniDownloader-universal-debug.apk`. instrumentation 테스트를 빌드하고 JVM 단위 테스트도 실행합니다. 구조, 검증, 패키징은 [개발 안내](../../docs/DEVELOPMENT.md)를 참고하세요.
 
 ## 설정
 

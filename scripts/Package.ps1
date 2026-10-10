@@ -36,5 +36,5 @@ Make-Zip (Join-Path $out 'OmniDownloader-browser-extension.zip') (Join-Path $roo
 $files=@(& git -C $root -c core.quotepath=false ls-files | ForEach-Object {Get-Item -LiteralPath (Join-Path $root $_)})
 if($LASTEXITCODE -ne 0){throw 'Unable to list tracked source files'}
 Make-Zip (Join-Path $out 'OmniDownloader-source.zip') $root @($files)
-@($zip,(Join-Path $out 'OmniDownloader-browser-extension.zip'),(Join-Path $out 'OmniDownloader-source.zip'),(Join-Path $out 'OmniDownloader-universal-debug.apk')) | Where-Object {Test-Path -LiteralPath $_} | ForEach-Object {Get-Item -LiteralPath $_} | ForEach-Object { $hash=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); "$hash  $($_.Name)" } | Set-Content -LiteralPath (Join-Path $out 'SHA256SUMS.txt') -Encoding UTF8
+@($zip,(Join-Path $out 'OmniDownloader-browser-extension.zip'),(Join-Path $out 'OmniDownloader-source.zip'),(Join-Path $out 'OmniDownloader-universal.apk')) | Where-Object {Test-Path -LiteralPath $_} | ForEach-Object {Get-Item -LiteralPath $_} | ForEach-Object { $hash=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); "$hash  $($_.Name)" } | Set-Content -LiteralPath (Join-Path $out 'SHA256SUMS.txt') -Encoding UTF8
 Write-Host "Packages ready: $out"

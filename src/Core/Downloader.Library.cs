@@ -45,7 +45,7 @@ public sealed partial class Downloader
             var staging=Path.Combine(j.Directory,".omni-"+j.Id+".part");
             try {
                 await using(var input=File.OpenRead(file))await using(var output=new FileStream(staging,FileMode.CreateNew,FileAccess.Write,FileShare.None,65536,true)){await input.CopyToAsync(output,ct);await output.FlushAsync(ct);}
-                await using(var a=File.OpenRead(file))await using(var b=File.OpenRead(staging)){if(!((await SHA256.HashDataAsync(a,ct)).SequenceEqual(await SHA256.HashDataAsync(b,ct))))throw new IOException("檔案複製驗證失敗 / Copy verification failed");}
+                await using(var a=File.OpenRead(file))await using(var b=File.OpenRead(staging)){var expected=await SHA256.HashDataAsync(a,ct);var actual=await SHA256.HashDataAsync(b,ct);if(!expected.AsSpan().SequenceEqual(actual))throw new IOException("檔案複製驗證失敗 / Copy verification failed");}
                 ct.ThrowIfCancellationRequested();File.Move(staging,destination,action=="overwrite");
             } finally {if(File.Exists(staging))File.Delete(staging);}
             j.FilePath=destination;j.ProcessingSeconds=processingSeconds?.Invoke();j.State=JobState.Completed;j.Progress=100;j.TotalBytes=new FileInfo(destination).Length;j.Bytes=j.TotalBytes.Value;j.CompletedAt=DateTimeOffset.UtcNow;store.Save(j);

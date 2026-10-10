@@ -9,6 +9,7 @@ local.properties
 *.user
 *.keystore
 *.jks
+key.properties
 *.part
 *.ytdl
 node_modules/
