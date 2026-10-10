@@ -15,6 +15,8 @@ $readme=$readme.Replace('](docs/',"](https://github.com/HKmario852/mp4-mp3-downl
 $readme=$readme.Replace('href="docs/',"href=`"https://github.com/HKmario852/mp4-mp3-downloader/blob/v$version/docs/")
 $readme=$readme.Replace('src="docs/',"src=`"https://raw.githubusercontent.com/HKmario852/mp4-mp3-downloader/v$version/docs/")
 [IO.File]::WriteAllText($portableReadme,$readme)
+$portableNotices=Join-Path $windows 'THIRD-PARTY.md'
+[IO.File]::WriteAllText($portableNotices,[IO.File]::ReadAllText($portableNotices).Replace('](docs/licenses/',']('))
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Make-Zip([string]$Zip,[string]$Base,[IO.FileInfo[]]$Files){
     if(Test-Path -LiteralPath $Zip){Remove-Item -LiteralPath $Zip}
