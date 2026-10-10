@@ -72,6 +72,7 @@ public static class Program
                 if(args.Contains("--cache-regression")){await CheckCache(engine,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--metadata-read-regression")){await CheckMetadataRead(window,engine,store,output,args.Length>3?args[3]:null,args.Length>4?args[4]:null);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--library-persistence-regression")||args.Contains("--library-reopen")){await CheckLibraryPersistence(window,engine,store,output,args);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
+                if(args.Contains("--source-management-regression")){await CheckSourceManagement(window,engine,store,output);await engine.DisposeAsync();window.AllowClose=true;window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--folder-import-regression")){await CheckFolderImport(window,engine,store,output,args.Length>3?args[3]:null);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--artwork-drop-regression")){await CheckArtworkDrop(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
                 if(args.Contains("--v24-regression")){await CheckV21(window,engine,store,app,output);await CheckV24(window,engine,store,app,output);await engine.DisposeAsync();window.Close();app.Shutdown(0);return;}
@@ -298,6 +299,35 @@ public static class Program
         }
         window.UpdateLayout();Capture(window,Path.Combine(output,"metadata-read.png"));
         File.WriteAllText(Path.Combine(output,"metadata-read-checks.json"),Json.Encode(new{passed=true,actualArtist,actualCoverWidth,checks=new[]{"disk tags override stale rows","padded artwork preview","invalid artwork isolation","visible source path","unsaved draft preservation","distinct folder copies","real desktop tags","real downloads tags","no user file or history writes"}}));
+    }
+    static async Task CheckSourceManagement(MainWindow window,Downloader engine,Store store,string output)
+    {
+        void Check(bool value,string message){if(!value)throw new Exception(message);}
+        var flags=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        List<DownloadJob> Songs(TagEditorView view)=>(List<DownloadJob>)typeof(TagEditorView).GetField("songs",flags)!.GetValue(view)!;
+        async Task<TagEditorView> Open(){((Button)window.FindName("TagsNav")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);var view=(TagEditorView)((ContentControl)window.FindName("PageHost")).Content;while(view.Busy)await Task.Delay(20);return view;}
+        var desktop=Path.Combine(output,"Desktop","song");var downloads=Path.Combine(output,"Downloads","song");Directory.CreateDirectory(desktop);Directory.CreateDirectory(downloads);
+        var paths=new[]{Path.Combine(desktop,"sample.mp3"),Path.Combine(downloads,"sample.mp3")};
+        foreach(var path in paths)File.Copy("tests/Fixtures/audio/tone.mp3",path,true);
+        var historyPath=Path.Combine(output,"history.mp3");File.Copy(paths[0],historyPath,true);
+        store.Save(new DownloadJob{FilePath=historyPath,Title="History sample",State=JobState.Completed,OutputFormat="mp3",Mode=DownloadMode.Mp3});
+        var history=store.Load().Select(Json.Encode).ToArray();var hashes=await Task.WhenAll(paths.Append(historyPath).Select(path=>TagReview.Hash(path)));
+        var editor=await Open();await editor.Import([desktop]);await editor.Import([downloads]);
+        Check(Songs(editor).Count==3,"Two different saved folders plus download history must retain their distinct paths");
+        var manager=(Expander)typeof(TagEditorView).GetField("sourceManager",flags)!.GetValue(editor)!;manager.IsExpanded=true;await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);
+        Check(manager.Header.ToString()!.Contains("2"),"Manager must show both persisted sources");
+        window.UpdateLayout();Capture(window,Path.Combine(output,"source-manager-before.png"));
+        await editor.RemoveSource(TagLibrary.Source(downloads));
+        Check(store.TagLibrarySources().Count==1,"Removal must forget only the selected source");
+        Check(Songs(editor).Count==2&&Songs(editor).All(j=>j.FilePath!=paths[1]),"Removed source rows must disappear immediately while other source and history remain");
+        Check(manager.Header.ToString()!.Contains("1"),"Manager count must refresh immediately");
+        var reopened=await Open();Check(Songs(reopened).Count==2&&Songs(reopened).All(j=>j.FilePath!=paths[1]),"Returning must not restore the removed source");
+        Check(new Store(store.DataDirectory).TagLibrarySources().Single().Path==desktop,"Removal must survive a reopened store");
+        Check(history.SequenceEqual(store.Load().Select(Json.Encode)),"Source removal must not rewrite history");
+        Check(hashes.SequenceEqual(await Task.WhenAll(paths.Append(historyPath).Select(path=>TagReview.Hash(path)))),"Source removal must not alter or delete audio files");
+        var finalManager=(Expander)typeof(TagEditorView).GetField("sourceManager",flags)!.GetValue(reopened)!;finalManager.IsExpanded=true;await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);window.UpdateLayout();Capture(window,Path.Combine(output,"source-manager-after.png"));
+        window.Width=1050;await window.Dispatcher.InvokeAsync(()=>{},DispatcherPriority.ApplicationIdle);window.UpdateLayout();Capture(window,Path.Combine(output,"source-manager-narrow.png"));
+        File.WriteAllText(Path.Combine(output,"source-management-checks.json"),Json.Encode(new{passed=true,checks=new[]{"two real source paths visible","remove chosen source only","refresh rows and count","reopen persistence","history unchanged","audio files unchanged"}}));
     }
     static async Task CheckFolderImport(MainWindow window,Downloader engine,Store store,string output,string? userFolder)
     {

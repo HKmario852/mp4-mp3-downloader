@@ -42,4 +42,21 @@ public sealed class TagLibraryTests : IDisposable
         var next=Path.Combine(root,"新名.mp3");File.Move(good,next);store.MoveTagLibraryFile(good,next);
         Assert.Contains(new Store(store.DataDirectory).TagLibrarySources(),s=>s.Path==next);Assert.Single(TagLibrary.Read(store.TagLibrarySources()).Songs);
     }
+    [Fact] public void ForgettingFolderPersistsWithoutDeletingFilesOrHistoryOrOtherSources()
+    {
+        var desktop=Path.Combine(root,"Desktop","song");var downloads=Path.Combine(root,"Downloads","song");
+        Directory.CreateDirectory(desktop);Directory.CreateDirectory(downloads);
+        var keep=Path.Combine(desktop,"same.mp3");var remove=Path.Combine(downloads,"same.mp3");
+        File.WriteAllBytes(keep,[1,2,3]);File.WriteAllBytes(remove,[1,2,3]);
+        var store=new Store(Path.Combine(root,"data"));store.RememberTagLibrarySources([TagLibrary.Source(desktop),TagLibrary.Source(downloads)]);
+        var job=new DownloadJob{FilePath=remove,Title="History remains",State=JobState.Completed};store.Save(job);
+        var history=Json.Encode(store.Load().Single());
+        store.ForgetTagLibrarySource(new(downloads.ToUpperInvariant()+Path.DirectorySeparatorChar,true));
+        store.ForgetTagLibrarySource(new(downloads,true));
+        var reopened=new Store(store.DataDirectory);
+        Assert.Equal(desktop,Assert.Single(reopened.TagLibrarySources()).Path);
+        Assert.Equal(history,Json.Encode(reopened.Load().Single()));
+        Assert.Equal(new byte[]{1,2,3},File.ReadAllBytes(keep));Assert.Equal(new byte[]{1,2,3},File.ReadAllBytes(remove));
+        Assert.Equal(keep,Assert.Single(TagLibrary.Read(reopened.TagLibrarySources()).Songs).FilePath);
+    }
 }

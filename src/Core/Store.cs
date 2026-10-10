@@ -32,5 +32,9 @@ public sealed class Store
     {
         lock(gate){using var db=Open();using var tx=db.BeginTransaction();using var c=db.CreateCommand();c.Transaction=tx;c.CommandText="UPDATE OR REPLACE tag_library_sources SET path=$new WHERE path=$old AND isFolder=0";c.Parameters.AddWithValue("$old",Path.GetFullPath(previous));c.Parameters.AddWithValue("$new",Path.GetFullPath(current));c.ExecuteNonQuery();tx.Commit();}
     }
+    public void ForgetTagLibrarySource(TagLibrarySource source)
+    {
+        lock(gate){using var db=Open();using var c=db.CreateCommand();c.CommandText="DELETE FROM tag_library_sources WHERE path=$p AND isFolder=$f";c.Parameters.AddWithValue("$p",Path.TrimEndingDirectorySeparator(Path.GetFullPath(source.Path)));c.Parameters.AddWithValue("$f",source.IsFolder);c.ExecuteNonQuery();}
+    }
     public void Checkpoint() { using var db = Open(); using var c = db.CreateCommand(); c.CommandText = "PRAGMA wal_checkpoint(TRUNCATE)"; c.ExecuteNonQuery(); }
 }

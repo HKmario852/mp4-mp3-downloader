@@ -74,6 +74,8 @@ Do not put cookies in URLs, Git, logs, screenshots, or release archives. Forward
 
 ## Tag editing and recognition
 
+Windows remembers every added source, including folders added on previous visits. Expand **Manage added sources** in the tag editor to see full paths and remove a saved location. Removing a source does not delete audio, alter download history, or hide a file that is also included by another saved source or download history. Two copies at different file paths remain distinct files.
+
 The editor works with MP3 (ID3v2.3/v2.4), Opus/FLAC (Vorbis comments), and M4A (MP4 atoms); do not assume every unusual frame or file variant is supported. Deltas distinguish an absent key (unchanged) from an explicitly empty value. Track numbers are fixed batch values, not automatic increments. Changing a nonempty title can rename the file; Windows filename validation and collision handling apply. Unchanged titles do not trigger renaming.
 
 Scan is a top-level view in the existing window, not a second window. Fingerprinting decodes up to 120 seconds locally. AcoustID receives the fingerprint and total duration; MusicBrainz receives metadata queries or IDs. Public MusicBrainz lookup needs no account. The distributed Windows app has an AcoustID application key; an optional custom application key can be configured. Neither a MusicBrainz password nor an AcoustID personal submission key is required.

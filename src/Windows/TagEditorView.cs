@@ -14,6 +14,7 @@ public sealed class TagEditorView : UserControl
     readonly Dictionary<string,ImageSource> thumbnails=[]; readonly List<DownloadJob> songs=[]; readonly HashSet<string> selected=[];
     readonly Dictionary<string,string> baseline=[]; readonly Dictionary<string,string> delta=[]; readonly Dictionary<string,TextBox> fields=[];
     readonly StackPanel songList=new(); readonly TextBox search=new(),raw=new(){Text="{}",AcceptsReturn=true,MinHeight=90};
+    readonly StackPanel sourceRows=new(); readonly Expander sourceManager=new(){Name="TagLibrarySources",Margin=new Thickness(4,0,4,8)};
     readonly TextBlock state=Text(""),error=Text(""),counter=Text("");
     readonly TextBlock fileLocation=new(){FontSize=12,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,4,0,0)};
     readonly TextBlock coverPlaceholder=Text(T("尚未加入封面","No artwork"),13);
@@ -39,7 +40,7 @@ public sealed class TagEditorView : UserControl
         var root=new DockPanel{Margin=new Thickness(18)};var top=new StackPanel();top.Children.Add(Text(T("標籤編輯","Tag editor"),28));top.Children.Add(Text(T("編輯音訊標題、演出者、專輯與封面資料","Edit audio song, artist, album and artwork"),14));
         var toolbar=new DockPanel{Margin=new Thickness(0,12,0,10)};
         toolbar.Children.Add(IconButton("add",T("加入音訊","Add audio"),()=>Pick(false),true));toolbar.Children.Add(IconButton("folder",T("加入資料夾","Add folder"),()=>Pick(true)));
-        DockPanel.SetDock(counter,Dock.Right);toolbar.Children.Add(counter);toolbar.Children.Add(Hint(search,T("搜尋歌曲、演出者、專輯或檔名…","Search songs, artist, album or filename…")));top.Children.Add(toolbar);var selectionTools=new WrapPanel();selectionTools.Children.Add(Button(T("全選","Select all"),async()=>await SelectSongs(songs.Where(j=>HistorySearch.Matches(j,search.Text)).Select(j=>j.Id))));selectionTools.Children.Add(Button(T("取消全選","Clear selection"),async()=>await SelectSongs([])));selectionTools.Children.Add(IconButton("search",T("重新尋找封面","Find album artwork"),async()=>await FindArtwork()));selectionTools.Children.Add(IconButton("search","查找歌曲標籤",async()=>await FindMetadata(false)));selectionTools.Children.Add(IconButton("audio","Scan 音訊辨識",async()=>await FindMetadata(true)));top.Children.Add(selectionTools);DockPanel.SetDock(top,Dock.Top);root.Children.Add(top);
+        DockPanel.SetDock(counter,Dock.Right);toolbar.Children.Add(counter);toolbar.Children.Add(Hint(search,T("搜尋歌曲、演出者、專輯或檔名…","Search songs, artist, album or filename…")));top.Children.Add(toolbar);sourceManager.Content=new ScrollViewer{Content=sourceRows,MaxHeight=180,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};top.Children.Add(sourceManager);RefreshSources();var selectionTools=new WrapPanel();selectionTools.Children.Add(Button(T("全選","Select all"),async()=>await SelectSongs(songs.Where(j=>HistorySearch.Matches(j,search.Text)).Select(j=>j.Id))));selectionTools.Children.Add(Button(T("取消全選","Clear selection"),async()=>await SelectSongs([])));selectionTools.Children.Add(IconButton("search",T("重新尋找封面","Find album artwork"),async()=>await FindArtwork()));selectionTools.Children.Add(IconButton("search","查找歌曲標籤",async()=>await FindMetadata(false)));selectionTools.Children.Add(IconButton("audio","Scan 音訊辨識",async()=>await FindMetadata(true)));top.Children.Add(selectionTools);DockPanel.SetDock(top,Dock.Top);root.Children.Add(top);
         var footer=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right};footer.Children.Add(rename);undoReview.Visibility=Visibility.Collapsed;undoReview.Click+=async(_,_)=>{if(lastUndo is null||undoSong is null)return;try{preview.Session.StopIfFile(undoSong.FilePath);await lastUndo.Restore(store,undoSong);engine.ReloadEditedJobs([undoSong.Id]);await ReviewApplied(undoSong,[],null,null,0);error.Text="已復原上次標籤套用";undoReview.Visibility=Visibility.Collapsed;}catch(Exception e){error.Text=e.Message;}};footer.Children.Add(undoReview);footer.Children.Add(IconButton("back",T("復原變更","Revert changes"),()=>_=LoadSelection()));save=IconButton("save",T("儲存標籤","Save tags"),async()=>await Save(),true);save.Name="SaveTags";footer.Children.Add(save);DockPanel.SetDock(footer,Dock.Bottom);root.Children.Add(footer);error.Foreground=Brush("#FF7777");error.TextWrapping=TextWrapping.Wrap;DockPanel.SetDock(error,Dock.Bottom);root.Children.Add(error);
         var grid=new Grid();grid.ColumnDefinitions.Add(new(){Width=new GridLength(300)});grid.ColumnDefinitions.Add(new());
         var list=new ScrollViewer{Content=songList,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};list.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)]=owner.FindResource("SlimScrollBar");grid.Children.Add(Card(list,10));
@@ -68,6 +69,41 @@ public sealed class TagEditorView : UserControl
         }
         catch(Exception e){error.Text=T("未能載入已加入嘅歌曲：","Could not load saved songs: ")+e.Message;}
         finally{busy=false;IsEnabled=true;if(libraryReady)Changed(true);else state.Text=T("歌曲載入未完成","Songs could not be loaded");}
+    }
+    void RefreshSources()
+    {
+        var sources=store.TagLibrarySources();sourceRows.Children.Clear();
+        sourceManager.Header=T($"管理已加入來源（{sources.Count}）",$"Manage added sources ({sources.Count})");
+        sourceRows.Children.Add(Text(T("移除來源只會取消保存位置，不會刪除歌曲；下載紀錄中的音訊仍會顯示。","Removing a source forgets its location without deleting songs. Audio in download history remains visible."),12));
+        foreach(var source in sources)
+        {
+            var row=new DockPanel{LastChildFill=true};
+            var remove=IconButton("delete",T("移除來源","Remove source"),async()=>await RemoveSource(source));
+            System.Windows.Automation.AutomationProperties.SetName(remove,T("移除來源：","Remove source: ")+source.Path);
+            DockPanel.SetDock(remove,Dock.Right);row.Children.Add(remove);
+            var label=Text((source.IsFolder?T("資料夾：","Folder: "):T("檔案：","File: "))+source.Path,13);label.ToolTip=source.Path;row.Children.Add(label);
+            sourceRows.Children.Add(Card(row,8));
+        }
+        if(sources.Count==0)sourceRows.Children.Add(Text(T("尚未加入音訊檔案或資料夾。","No audio files or folders have been added."),13));
+    }
+    public async Task RemoveSource(TagLibrarySource source)
+    {
+        if(Busy||!await CanLeave())return;
+        busy=true;IsEnabled=false;error.Text="";
+        try
+        {
+            store.ForgetTagLibrarySource(source);
+            var result=await Task.Run(()=>TagLibrary.Read(store.TagLibrarySources()));
+            var history=store.Load(true).Where(j=>j.State==JobState.Completed&&AudioPipeline.Supported(j.Extension)&&File.Exists(j.FilePath)).ToArray();
+            var retained=history.Concat(result.Songs).Select(j=>SongPath(j.FilePath!)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach(var song in songs.Where(j=>!retained.Contains(SongPath(j.FilePath!))).ToArray()){songs.Remove(song);selected.Remove(song.Id);thumbnails.Remove(song.Id);}
+            foreach(var song in history)MergeSong(song);
+            foreach(var song in result.Songs)MergeSong(song,true);
+            SortSongs();if(selected.Count==0&&songs.Count>0)selected.Add((songs.FirstOrDefault(j=>preview.Session.IsFile(j.FilePath))??songs[0]).Id);
+            await LoadThumbnails();RefreshSources();Rows();await LoadSelection();ShowUnavailable(result);
+        }
+        catch(Exception e){RefreshSources();error.Text=T("未能移除來源：","Could not remove source: ")+e.Message;}
+        finally{busy=false;IsEnabled=true;Changed(true);}
     }
     void ShowUnavailable(TagLibraryRead result)
     {
@@ -185,7 +221,7 @@ public sealed class TagEditorView : UserControl
             foreach(var stale in songs.Where(j=>!File.Exists(j.FilePath)).ToArray()){songs.Remove(stale);thumbnails.Remove(stale.Id);}
             selected.Clear();
             foreach(var j in result.Songs)selected.Add(MergeSong(j,true).Id);
-            SortSongs();Rows();await LoadSelection();ShowUnavailable(result);_=LoadThumbnails();
+            SortSongs();RefreshSources();Rows();await LoadSelection();ShowUnavailable(result);_=LoadThumbnails();
         }
         catch(Exception e){error.Text=T("加入失敗：","Import failed: ")+e.Message;}
         finally{busy=false;IsEnabled=true;Changed(true);}
