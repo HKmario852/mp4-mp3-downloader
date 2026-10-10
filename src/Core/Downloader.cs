@@ -18,9 +18,12 @@ public sealed partial class Downloader : IAsyncDisposable
     public string FfmpegPath=>Path.Combine(binaryDir,"ffmpeg.exe");
     public event Action<DownloadJob>? ChoiceRequested;
     public Func<string, Task<bool>>? RetryCover;
-    public Downloader(Store store, string binaryDir, string workDir, MusicMetadata? musicService = null)
+    /// <summary>The yt-dlp in use: the bundled copy or a newer one downloaded into [toolsDir].</summary>
+    public YtDlpTool YtDlp { get; }
+    public Downloader(Store store, string binaryDir, string workDir, MusicMetadata? musicService = null, string? toolsDir = null)
     {
         this.store = store; this.binaryDir = binaryDir; this.workDir = workDir; music=musicService??new(); System.IO.Directory.CreateDirectory(workDir);
+        YtDlp = new YtDlpTool(binaryDir, toolsDir ?? Path.Combine(workDir, "tools"));
         Settings = store.Preferences(); jobs = store.Load(); groups = store.Groups();
         foreach (var j in jobs.Where(j => j.State is not (JobState.Completed or JobState.Cancelled or JobState.Failed or JobState.PendingChoice))) { j.State = JobState.Paused; j.Speed = 0; j.Eta = 0; if (j.HadCredentials) j.Error = "請從擴充功能重新傳送登入憑證"; store.Save(j); }
         // Credentials are intentionally not persisted. Remove only our credential files after a crash.
@@ -181,7 +184,7 @@ public sealed partial class Downloader : IAsyncDisposable
             if(!File.Exists(Settings.CookieFile)) throw new IOException("Cookie 檔案不存在 / Cookie file missing");
             effectiveAuth = ["--cookies", Settings.CookieFile];
         }
-        var text = await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), new[] { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--dump-single-json", "--skip-download", "--no-warnings" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(effectiveAuth ?? []).Concat(["--", url]), null, ct);
+        var text = await ProcessRunner.Run(YtDlp.ExecutablePath, new[] { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--dump-single-json", "--skip-download", "--no-warnings" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(effectiveAuth ?? []).Concat(["--", url]), null, ct);
         using var doc = JsonDocument.Parse(text); var root = doc.RootElement;
         string Get(string key) => root.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";
         static double? Number(JsonElement element, string key) => element.TryGetProperty(key, out var n) && n.ValueKind == JsonValueKind.Number && n.TryGetDouble(out var value) ? value : null;
@@ -194,7 +197,7 @@ public sealed partial class Downloader : IAsyncDisposable
     async Task Discover(DownloadJob parent, List<string> auth, CancellationToken ct)
     {
         var group = Groups.First(g => g.Id == parent.GroupId);
-        var text = await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), new[] { "--ignore-config", "--flat-playlist", "--dump-single-json", "--yes-playlist", "--skip-download" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(auth).Concat(["--", parent.Url]), null, ct);
+        var text = await ProcessRunner.Run(YtDlp.ExecutablePath, new[] { "--ignore-config", "--flat-playlist", "--dump-single-json", "--yes-playlist", "--skip-download" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(auth).Concat(["--", parent.Url]), null, ct);
         using var doc = JsonDocument.Parse(text); group.Title = doc.RootElement.GetProperty("title").GetString() ?? "播放清單";
         var directory = Path.Combine(parent.Directory, Validation.SafeName(group.Title)); var seen = new HashSet<string>();
         foreach (var item in doc.RootElement.GetProperty("entries").EnumerateArray())
@@ -216,7 +219,7 @@ public sealed partial class Downloader : IAsyncDisposable
         args.AddRange(auth); args.AddRange(["--", j.Url]); var ema = new SpeedEma(); var watch = Stopwatch.StartNew(); long previous = 0;
         using var sampleCt = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var sampler = Task.Run(async () => { using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500)); try { while (await timer.WaitForNextTickAsync(sampleCt.Token)) { var now = watch.ElapsedMilliseconds; var speed = ema.Sample(j.Bytes, j.TotalBytes, (now - previous) / 1000.0, j.State == JobState.Downloading); previous = now; j.Speed = speed.speed; j.Eta = speed.eta; } } catch (OperationCanceledException) { } });
-        try { await ProcessRunner.Run(Path.Combine(binaryDir, "yt-dlp.exe"), args, line => { if (!line.StartsWith("OMNI:")) return; var fields = line[5..].Split('|'); if (long.TryParse(fields[0], out var b)) j.Bytes = b; if (fields.Length > 1 && long.TryParse(fields[1], out var total)) j.TotalBytes = total; j.Progress = j.TotalBytes > 0 ? Math.Min(100, 100.0 * j.Bytes / j.TotalBytes.Value) : 0; }, ct); }
+        try { await ProcessRunner.Run(YtDlp.ExecutablePath, args, line => { if (!line.StartsWith("OMNI:")) return; var fields = line[5..].Split('|'); if (long.TryParse(fields[0], out var b)) j.Bytes = b; if (fields.Length > 1 && long.TryParse(fields[1], out var total)) j.TotalBytes = total; j.Progress = j.TotalBytes > 0 ? Math.Min(100, 100.0 * j.Bytes / j.TotalBytes.Value) : 0; }, ct); }
         finally { sampleCt.Cancel(); await sampler; }
     }
     public async Task Pause(string id)

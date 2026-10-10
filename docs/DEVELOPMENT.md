@@ -33,7 +33,9 @@ Android needs a full JDK 21, Android SDK / build-tools 35, NDK 27.0.12077973, an
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-The script copies source into an ASCII-only local build cache to avoid Gradle test-launch issues with non-ASCII paths. It builds the debug app and instrumentation APK, runs JVM unit tests, and copies the app to `artifacts/OmniDownloader-universal-debug.apk`. Bundled ABIs are arm64-v8a, armeabi-v7a, x86, and x86_64. A debug build does not establish real-device or background-service reliability; distribution signing requires your own key, kept outside Git.
+The script copies source into an ASCII-only local build cache to avoid Gradle test-launch issues with non-ASCII paths. It builds the release and debug apps and the instrumentation APK, runs JVM unit tests, and copies the apps to `artifacts/OmniDownloader-universal.apk` (release) and `artifacts/OmniDownloader-universal-debug.apk` (for instrumentation tests). Bundled ABIs are arm64-v8a, armeabi-v7a, x86, and x86_64. A debug build does not establish real-device or background-service reliability.
+
+Release signing: run `./scripts/Setup-AndroidSigning.ps1` once. It creates `%USERPROFILE%\omni-signing\omni-release.jks` (back that folder up; never commit it) and a gitignored `android/key.properties` that local builds read. Add `-UploadSecrets` to store the key as GitHub secrets (`OMNI_KEYSTORE_BASE64`, `OMNI_KEYSTORE_PASSWORD`, `OMNI_KEY_ALIAS`) so CI on `main` signs too; pull-request CI builds an unsigned release APK. Without a key, `Build-Android.ps1` builds only the debug APK. Installs of the earlier debug-signed APK cannot update to a release-signed one; the in-app updater detects this and asks the user to uninstall once.
 
 Extension unit checks require Node.js; rendered extension checks use the Playwright dependency in [package.json](../package.json):
 
@@ -43,7 +45,7 @@ npm run test:extension
 npm run test:browser
 ```
 
-See [verification records](VERIFICATION.md) and the version-specific `VERIFICATION-*.md` documents for the actual scope of previous checks. Those records describe a particular build, not a guarantee for every device or website.
+See [verification records](VERIFICATION.md) and the version-specific records in [releases/](releases/) (indexed in the [changelog](../CHANGELOG.md)) for the actual scope of previous checks. Those records describe a particular build, not a guarantee for every device or website.
 
 ## Audio pipeline
 
@@ -92,7 +94,7 @@ After building both platforms:
 ./scripts/Package.ps1
 ```
 
-The script packages Windows, the browser extension, and source, then writes `artifacts/SHA256SUMS.txt`. The Android debug APK is included in the checksum list if present. Release packages must exclude runtime `data/`, cookies, private keys, local SDK configuration, and `native-host.json`.
+The script packages Windows, the browser extension, and source, then writes `artifacts/SHA256SUMS.txt`. The signed Android APK (`OmniDownloader-universal.apk`) is included in the checksum list if present. Release packages must exclude runtime `data/`, cookies, private keys, local SDK configuration, and `native-host.json`.
 
 Windows release ZIPs use a single flat directory with unique filenames for compatibility with installed updaters. Licenses are included once at the root; the portable README links to versioned online documentation and screenshots. The source ZIP keeps the full repository layout and contains only Git-tracked files. Verify a real release ZIP using `scripts/Test-WindowsUpdatePackage.py`, not only its hashes: a correct digest does not establish updater compatibility.
 

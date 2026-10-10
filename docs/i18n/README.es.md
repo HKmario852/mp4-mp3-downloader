@@ -42,11 +42,13 @@ Los paquetes están en **[la última versión](https://github.com/HKmario852/mp4
 | Plataforma | Requisitos | Instalación |
 | --- | --- | --- |
 | Windows | Windows 10 (2004 o posterior) u 11, x64 | Extrae el ZIP de Windows en una carpeta con permisos de escritura. Ejecuta `OMNI.exe` y conserva juntos los archivos incluidos. |
-| Android | Android 8.0 o posterior (API 26) | Instala el APK universal de depuración. Elige una carpeta compartida para conservar las descargas al desinstalar. |
+| Android | Android 8.0 o posterior (API 26) | Instala el APK universal. Elige una carpeta compartida para conservar las descargas al desinstalar. |
 | Extensión del navegador | Chrome / Brave en Windows | Carga la extensión descomprimida y conecta su ID en los ajustes de la aplicación. [Guía de conexión](../../docs/DEVELOPMENT.md#browser-connection). |
 
 > **Nota:**
-> El ejecutable de Windows no está firmado. Los paquetes de Android son compilaciones de depuración para pruebas; la verificación en dispositivos y de los servicios en segundo plano está incompleta.
+> El ejecutable de Windows no está firmado. Desde la 0.2.21 el APK de Android es una compilación de lanzamiento firmada; si instalaste una compilación de prueba (debug) anterior, desinstálala una vez antes de instalar, porque Android no actualiza entre claves de firma distintas. La verificación en dispositivos y de los servicios en segundo plano está incompleta.
+>
+> Ambas apps mantienen yt-dlp al día entre versiones (Ajustes › Acerca de, comprobación diaria por defecto) y verifican cada descarga con el SHA-256 de GitHub.
 
 > [!NOTE]
 > Las versiones anteriores usan `App.exe`. Para la primera actualización al nuevo nombre, cierra la aplicación y extrae el paquete completo de Windows en la carpeta existente, conservando `data/` y `native-host.json`. Después, inicia `OMNI.exe`.
@@ -76,7 +78,7 @@ Para Android también necesitas **JDK 21**, **Android SDK / build-tools 35**, **
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-Resultado: `artifacts/OmniDownloader-universal-debug.apk`. El script también compila las pruebas de instrumentación y ejecuta las pruebas unitarias de JVM. Consulta la [guía de desarrollo](../../docs/DEVELOPMENT.md) para ver la arquitectura, las comprobaciones y el empaquetado.
+Resultado: `artifacts/OmniDownloader-universal.apk` (firmado con tu clave de lanzamiento; ejecuta una vez `./scripts/Setup-AndroidSigning.ps1` para crearla) y `artifacts/OmniDownloader-universal-debug.apk`. El script también compila las pruebas de instrumentación y ejecuta las pruebas unitarias de JVM. Consulta la [guía de desarrollo](../../docs/DEVELOPMENT.md) para ver la arquitectura, las comprobaciones y el empaquetado.
 
 ## Configuración
 

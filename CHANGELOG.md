@@ -1,0 +1,26 @@
+# Changelog
+
+Release notes and verification records for each version, newest first. The [releases page](https://github.com/HKmario852/mp4-mp3-downloader/releases) has the downloads.
+
+- **0.2.20** · [release notes](docs/releases/RELEASE-0.2.20.md)
+- **0.2.19** · [release notes](docs/releases/RELEASE-0.2.19.md)
+- **0.2.18** · [release notes](docs/releases/RELEASE-0.2.18.md) · [verification](docs/releases/VERIFICATION-0.2.18.md)
+- **0.2.17** · [release notes](docs/releases/RELEASE-0.2.17.md) · [verification](docs/releases/VERIFICATION-0.2.17.md)
+- **0.2.16** · [release notes](docs/releases/RELEASE-0.2.16.md) · [verification](docs/releases/VERIFICATION-0.2.16.md)
+- **0.2.15** · [release notes](docs/releases/RELEASE-0.2.15.md) · [verification](docs/releases/VERIFICATION-0.2.15.md)
+- **0.2.14** · [release notes](docs/releases/RELEASE-0.2.14.md) · [verification](docs/releases/VERIFICATION-0.2.14.md)
+- **0.2.13** · [release notes](docs/releases/RELEASE-0.2.13.md) · [verification](docs/releases/VERIFICATION-0.2.13.md)
+- **0.2.12** · [release notes](docs/releases/RELEASE-0.2.12.md) · [verification](docs/releases/VERIFICATION-0.2.12.md)
+- **0.2.11** · [release notes](docs/releases/RELEASE-0.2.11.md) · [verification](docs/releases/VERIFICATION-0.2.11.md)
+- **0.2.10** · [release notes](docs/releases/RELEASE-0.2.10.md) · [verification](docs/releases/VERIFICATION-0.2.10.md)
+- **0.2.9** · [release notes](docs/releases/RELEASE-0.2.9.md) · [verification](docs/releases/VERIFICATION-0.2.9.md)
+- **0.2.8** · [release notes](docs/releases/RELEASE-0.2.8.md) · [verification](docs/releases/VERIFICATION-0.2.8.md)
+- **0.2.7** · [release notes](docs/releases/RELEASE-0.2.7.md) · [verification](docs/releases/VERIFICATION-0.2.7.md)
+- **0.2.6** · [release notes](docs/releases/RELEASE-0.2.6.md) · [verification](docs/releases/VERIFICATION-0.2.6.md)
+- **0.2.5** · [release notes](docs/releases/RELEASE-0.2.5.md) · [verification](docs/releases/VERIFICATION-0.2.5.md)
+- **0.2.4** · [release notes](docs/releases/RELEASE-0.2.4.md) · [verification](docs/releases/VERIFICATION-0.2.4.md)
+- **0.2.3** · [release notes](docs/releases/RELEASE-0.2.3.md) · [verification](docs/releases/VERIFICATION-0.2.3.md)
+- **0.2.2** · [release notes](docs/releases/RELEASE-0.2.2.md) · [verification](docs/releases/VERIFICATION-0.2.2.md)
+- **0.2.1** · [release notes](docs/releases/RELEASE-0.2.1.md) · [verification](docs/releases/VERIFICATION-0.2.1.md)
+- **0.2.0** · [release notes](docs/releases/RELEASE-0.2.0.md) · [verification](docs/releases/VERIFICATION-0.2.0.md)
+- **0.1.4** · [release notes](docs/releases/RELEASE-0.1.4.md)

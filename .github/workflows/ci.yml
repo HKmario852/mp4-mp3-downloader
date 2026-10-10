@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The code needs the C# 13 compiler (.NET 9 SDK); the apps and tests still target .NET 8
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Core tests
+        run: dotnet test tests/Core.Tests/Core.Tests.csproj -c Release
+      - name: Browser extension tests
+        run: node --test tests/extension.test.mjs
+      - name: Updater tests
+        run: python -I tests/test_updater.py
+      - name: README links
+        run: python scripts/Check-ReadmeLinks.py
+      # Build only; the bundled tools (yt-dlp, FFmpeg, Deno) are downloaded when packaging a release
+      - name: Build Windows app
+        shell: pwsh
+        run: ./scripts/Build-Windows.ps1 -SkipTools
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omni-windows-x64-no-tools
+          path: artifacts/windows-win-x64
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      # The runner image has the Android SDK; add the NDK and CMake versions the native fingerprint library pins
+      - name: Install NDK and CMake
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
+      # The release key comes from secrets on main (scripts/Setup-AndroidSigning.ps1 -UploadSecrets);
+      # pull requests build an unsigned release APK.
+      - name: Release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.OMNI_KEYSTORE_BASE64 }}
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/omni-release.jks"
+          echo "OMNI_KEYSTORE_FILE=$RUNNER_TEMP/omni-release.jks" >> "$GITHUB_ENV"
+      - name: Unit tests and release build
+        env:
+          OMNI_KEYSTORE_PASSWORD: ${{ secrets.OMNI_KEYSTORE_PASSWORD }}
+          OMNI_KEY_ALIAS: ${{ secrets.OMNI_KEY_ALIAS }}
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest assembleRelease --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omni-android-apk
+          path: android/app/build/outputs/apk/release/*.apk

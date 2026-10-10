@@ -12,6 +12,7 @@ public sealed partial class Preferences
     public bool CloseToTray { get; set; } = true;
     public bool StartMinimized { get; set; }
     public bool AutoUpdate { get; set; } = true;
+    public bool AutoUpdateYtDlp { get; set; } = true;
     public bool ResumeOnStart { get; set; }
     public bool MonitorClipboard { get; set; }
     public string TempDirectory { get; set; } = "";

@@ -20,7 +20,7 @@ public static class Program
         var data = Path.Combine(AppContext.BaseDirectory, "data");
         try { Directory.CreateDirectory(data); } catch (UnauthorizedAccessException) { data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OmniDownloader"); }
         RegistryIntegration.HealProtocol();
-        var store = new Store(data); var engine = new Downloader(store, AppContext.BaseDirectory, Path.Combine(data, "work"));
+        var store = new Store(data); var engine = new Downloader(store, AppContext.BaseDirectory, Path.Combine(data, "work"), toolsDir: Path.Combine(data, "tools"));
         RegistryIntegration.HealNativeHost(engine.Settings.ExtensionId);if(engine.Settings.StartAtLogin)DesktopIntegration.ApplyStartup(engine.Settings);
         var window = new MainWindow(engine, store); app.MainWindow = window;
         ToastNotificationManagerCompat.OnActivated += _ => app.Dispatcher.BeginInvoke(() => window.OpenHistory());
@@ -45,6 +45,9 @@ public static class Program
             if (protocol is not null) try { await engine.Accept(Validation.ParseProtocol(protocol)); } catch (Exception e) { System.Windows.MessageBox.Show(e.Message, "無法接收下載"); }
             foreach (var pending in engine.Jobs.Where(j => j.State == JobState.PendingChoice)) window.AskChoice(pending);
             if(engine.Settings.AutoUpdate) await UpdateManager.Check(engine.Settings.ReleaseRepository);
+            // Use the newer of the bundled and downloaded yt-dlp, then check for a newer release once a day
+            try { await engine.YtDlp.Refresh(); if (engine.Settings.AutoUpdateYtDlp && await engine.YtDlp.UpdateIfDue() is { Updated: true } r) Notifications.Show(UiKit.T("yt-dlp 已更新至 ", "yt-dlp updated to ") + r.Version); }
+            catch (Exception e) when (e is System.Net.Http.HttpRequestException or TaskCanceledException or IOException or System.Text.Json.JsonException) { }
         };
         app.DispatcherUnhandledException += (_, e) => { System.Windows.MessageBox.Show(e.Exception.Message, "操作未完成"); e.Handled = true; };
         app.Run(); ipcCt.Cancel(); tray.Dispose(); singleton.ReleaseMutex();
