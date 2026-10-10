@@ -42,11 +42,13 @@
 | 対象 | 必要環境 | インストール |
 | --- | --- | --- |
 | Windows | Windows 10（2004 以降）または 11、x64 | Windows ZIP を書き込み可能なフォルダーに展開し、`OMNI.exe` を起動。同梱ファイルはまとめて保管してください。 |
-| Android | Android 8.0 以降（API 26） | universal debug APK をインストール。アンインストール後もファイルを残すには共有フォルダーを選択します。 |
+| Android | Android 8.0 以降（API 26） | universal APK をインストール。アンインストール後もファイルを残すには共有フォルダーを選択します。 |
 | ブラウザー拡張機能 | Windows の Chrome／Brave | 展開した拡張機能を読み込み、アプリ設定で ID を接続。[設定手順](../../docs/DEVELOPMENT.md#browser-connection)。 |
 
 > **注意:**
-> Windows の実行ファイルは未署名です。Android はテスト用の debug ビルドで、実機とバックグラウンドサービスの検証は完了していません。
+> Windows の実行ファイルは未署名です。0.2.21 以降の Android APK は署名済みのリリースビルドです。以前のテスト用（debug）ビルドを入れている場合は、Android が署名鍵をまたいで更新できないため、一度アンインストールしてからインストールしてください。実機とバックグラウンドサービスの検証は完了していません。
+>
+> どちらのアプリもリリースの合間に yt-dlp を最新に保ちます（設定 › 情報、既定で毎日確認）。ダウンロードは GitHub の SHA-256 で検証します。
 
 > [!NOTE]
 > 旧版の実行ファイルは `App.exe` です。新しい名前への初回更新では、アプリを終了し、`data/` と `native-host.json` を残して Windows パッケージ全体を既存フォルダーに展開してください。その後 `OMNI.exe` を起動します。
@@ -76,7 +78,7 @@ Android には **JDK 21**、**Android SDK／build-tools 35**、**NDK 27.0.120779
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-出力：`artifacts/OmniDownloader-universal-debug.apk`。instrumentation テストのビルドと JVM 単体テストも実行します。構成、検証、パッケージ作成については [開発ガイド](../../docs/DEVELOPMENT.md) を参照してください。
+出力：`artifacts/OmniDownloader-universal.apk`（リリース鍵で署名。最初に `./scripts/Setup-AndroidSigning.ps1` を一度実行して作成）と `artifacts/OmniDownloader-universal-debug.apk`。instrumentation テストのビルドと JVM 単体テストも実行します。構成、検証、パッケージ作成については [開発ガイド](../../docs/DEVELOPMENT.md) を参照してください。
 
 ## 設定
 

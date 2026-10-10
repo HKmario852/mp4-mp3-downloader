@@ -42,11 +42,13 @@
 | 平台 | 系統需求 | 安裝方式 |
 | --- | --- | --- |
 | Windows | Windows 10（2004+）或 11，x64 | 將 Windows ZIP 解壓到可寫入的資料夾，執行 `OMNI.exe`；保留所有隨附檔案。 |
-| Android | Android 8.0+（API 26） | 安裝通用 debug APK。選擇共用資料夾，避免解除安裝時一併刪除下載檔案。 |
+| Android | Android 8.0+（API 26） | 安裝通用 APK。選擇共用資料夾，避免解除安裝時一併刪除下載檔案。 |
 | 瀏覽器擴充功能 | Windows 上的 Chrome／Brave | 載入解壓後的擴充功能，並在 App 設定連接其 ID。[設定步驟](../../docs/DEVELOPMENT.md#browser-connection)。 |
 
 > **注意:**
-> Windows 執行檔未簽署。Android 套件是供測試的 debug 版本；實機及背景服務驗證尚未完整。
+> Windows 執行檔未簽署。由 0.2.21 起 Android APK 為已簽署的正式版本；如曾安裝較早的測試（debug）版本，請先解除安裝一次再安裝，因為 Android 不能跨簽署金鑰更新。實機及背景服務驗證尚未完整。
+>
+> 兩個平台都會在版本之間自動更新 yt-dlp（設定 › 關於，預設每日檢查），並以 GitHub 提供的 SHA-256 核對下載。
 
 > [!NOTE]
 > 舊版使用 `App.exe`。首次改用新名稱時，請完全退出 App，將整個 Windows 更新包解壓到原資料夾，保留 `data/` 和 `native-host.json`，然後啟動 `OMNI.exe`。
@@ -76,7 +78,7 @@ cd mp4-mp3-downloader
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-輸出：`artifacts/OmniDownloader-universal-debug.apk`。腳本亦會建置 instrumentation 測試及執行 JVM 單元測試。架構、檢查與打包方式見 [開發指南](../../docs/DEVELOPMENT.md)。
+輸出：`artifacts/OmniDownloader-universal.apk`（以你的正式金鑰簽署；先執行一次 `./scripts/Setup-AndroidSigning.ps1` 建立）及 `artifacts/OmniDownloader-universal-debug.apk`。腳本亦會建置 instrumentation 測試及執行 JVM 單元測試。架構、檢查與打包方式見 [開發指南](../../docs/DEVELOPMENT.md)。
 
 ## 設定
 

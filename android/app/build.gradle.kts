@@ -1,4 +1,12 @@
+import java.util.Properties
+
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose"); id("org.jetbrains.kotlin.plugin.serialization") }
+
+// Release signing: android/key.properties on your PC (made by scripts/Setup-AndroidSigning.ps1) or OMNI_KEYSTORE_* env vars in CI.
+// Without either, release builds are unsigned (CI pull requests) and debug builds keep the debug key.
+val releaseKey = Properties().apply { rootProject.file("key.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+fun signingValue(name: String, env: String): String? = releaseKey.getProperty(name) ?: System.getenv(env)?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "io.hkmario.omni"
     compileSdk = 35
@@ -10,7 +18,14 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     packaging { jniLibs.useLegacyPackaging = true; resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/AL2.0", "META-INF/LGPL2.1") }
-    buildTypes { release { isMinifyEnabled = false } }
+    signingConfigs {
+        val store = signingValue("storeFile", "OMNI_KEYSTORE_FILE")
+        if (store != null) create("release") {
+            storeFile = file(store); storePassword = signingValue("storePassword", "OMNI_KEYSTORE_PASSWORD")
+            keyAlias = signingValue("keyAlias", "OMNI_KEY_ALIAS"); keyPassword = signingValue("keyPassword", "OMNI_KEY_PASSWORD") ?: storePassword
+        }
+    }
+    buildTypes { release { isMinifyEnabled = false; signingConfig = signingConfigs.findByName("release") } }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))
