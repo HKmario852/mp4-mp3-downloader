@@ -10,9 +10,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      # The code needs the C# 13 compiler (.NET 9 SDK); the apps and tests still target .NET 8
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: |
+            8.0.x
+            9.0.x
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -44,9 +47,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
+      # The runner image has the Android SDK; add the NDK and CMake versions the native fingerprint library pins
       - name: Install NDK and CMake
-        run: sdkmanager "ndk;27.0.12077973" "cmake;3.22.1"
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
       # The release key comes from secrets on main (scripts/Setup-AndroidSigning.ps1 -UploadSecrets);
       # pull requests build an unsigned release APK.
       - name: Release signing key
