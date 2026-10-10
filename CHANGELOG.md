@@ -2,6 +2,7 @@
 
 Release notes and verification records for each version, newest first. The [releases page](https://github.com/HKmario852/mp4-mp3-downloader/releases) has the downloads.
 
+- **0.2.21** · [release notes](docs/releases/RELEASE-0.2.21.md)
 - **0.2.20** · [release notes](docs/releases/RELEASE-0.2.20.md)
 - **0.2.19** · [release notes](docs/releases/RELEASE-0.2.19.md)
 - **0.2.18** · [release notes](docs/releases/RELEASE-0.2.18.md) · [verification](docs/releases/VERIFICATION-0.2.18.md)

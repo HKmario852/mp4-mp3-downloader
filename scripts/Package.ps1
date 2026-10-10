@@ -17,6 +17,8 @@ $readme=$readme.Replace('src="docs/',"src=`"https://raw.githubusercontent.com/HK
 [IO.File]::WriteAllText($portableReadme,$readme)
 $portableNotices=Join-Path $windows 'THIRD-PARTY.md'
 [IO.File]::WriteAllText($portableNotices,[IO.File]::ReadAllText($portableNotices).Replace('](docs/licenses/',']('))
+# Windows PowerShell 5.1 needs both assemblies (ZipArchiveMode lives in System.IO.Compression)
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Make-Zip([string]$Zip,[string]$Base,[IO.FileInfo[]]$Files){
     if(Test-Path -LiteralPath $Zip){Remove-Item -LiteralPath $Zip}
