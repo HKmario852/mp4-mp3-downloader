@@ -79,7 +79,7 @@ class MainActivity:ComponentActivity() {
             Row(Modifier.fillMaxSize().padding(padding)) {
                 if(wide&&page!="settings"&&page!="acoustid-review")NavigationRail(containerColor=Panel){Spacer(Modifier.height(20.dp));listOf("new" to "＋","queue" to "↓","history" to "✓","tags" to "♫","settings" to "⚙").forEach{(key,symbol)->NavigationRailItem(modifier=Modifier.testTag("nav-$key"),selected=page==key,onClick={navigate(key)},icon={FeatureIcon(when(key){"new"->"add";"queue"->"download";"history"->"complete";"tags"->"audio";else->"settings"})})}}
                 Column(Modifier.weight(1f).fillMaxHeight().padding(if(wide)24.dp else 18.dp)) {
-                    if(page!="acoustid-review")Row(verticalAlignment=Alignment.CenterVertically){Image(painter=androidx.compose.ui.res.painterResource(R.drawable.omni_mark),contentDescription=null,modifier=Modifier.size(38.dp));Spacer(Modifier.width(12.dp));Text("全能影音下載器",fontSize=23.sp,fontWeight=FontWeight.Bold)}
+                    if(page!="acoustid-review")Row(verticalAlignment=Alignment.CenterVertically){Image(painter=androidx.compose.ui.res.painterResource(R.drawable.omni_mark),contentDescription=null,modifier=Modifier.size(38.dp));Spacer(Modifier.width(12.dp));Text("Omni",fontSize=23.sp,fontWeight=FontWeight.Bold)}
                     if(page!="acoustid-review")Text(uiText("你的媒體，井然有序","Your media, organized"),color=Muted,fontSize=12.sp,modifier=Modifier.padding(top=5.dp,bottom=22.dp))
                     if(initError!=null)Text(initError!!,color=MaterialTheme.colorScheme.error)
                     when(page) {

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "全能影音下載器",
+  "name": "Omni",
   "version": "0.1.4",
-  "description": "將 YouTube 影片安全交予本機全能影音下載器。",
+  "description": "將 YouTube 影片安全交予本機 Omni。",
   "permissions": [
     "cookies",
     "nativeMessaging",
@@ -32,7 +32,7 @@
   ],
   "options_page": "options.html",
   "action": {
-    "default_title": "全能影音下載器設定",
+    "default_title": "Omni 設定",
     "default_popup": "options.html",
     "default_icon": {
       "16": "icon16.png",
