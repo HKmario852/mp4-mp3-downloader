@@ -13,7 +13,7 @@ public static class Program
         var protocol = args.FirstOrDefault(a => a.StartsWith("ytdl://", StringComparison.OrdinalIgnoreCase));
         if (!primary)
         {
-            try { Ipc.Send(protocol is not null ? Validation.ParseProtocol(protocol) : new IntakeRequest(Guid.NewGuid().ToString(), "", ToastNotificationManagerCompat.WasCurrentProcessToastActivated() ? "history" : "open")).GetAwaiter().GetResult(); } catch (Exception e) { System.Windows.MessageBox.Show(e.Message, "全能影音下載器"); }
+            try { Ipc.Send(protocol is not null ? Validation.ParseProtocol(protocol) : new IntakeRequest(Guid.NewGuid().ToString(), "", ToastNotificationManagerCompat.WasCurrentProcessToastActivated() ? "history" : "open")).GetAwaiter().GetResult(); } catch (Exception e) { System.Windows.MessageBox.Show(e.Message, "Omni"); }
             return;
         }
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -26,7 +26,7 @@ public static class Program
         ToastNotificationManagerCompat.OnActivated += _ => app.Dispatcher.BeginInvoke(() => window.OpenHistory());
         using var trayIconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/OMNI;component/Assets/omni.ico"))!.Stream;
         using var trayIcon = new System.Drawing.Icon(trayIconStream, 32, 32);
-        var tray = new System.Windows.Forms.NotifyIcon { Text = "全能影音下載器", Icon = trayIcon, Visible = true };
+        var tray = new System.Windows.Forms.NotifyIcon { Text = "Omni", Icon = trayIcon, Visible = true };
         var menu = new System.Windows.Forms.ContextMenuStrip(); menu.Items.Add("開啟", null, (_, _) => window.Reveal()); menu.Items.Add("已下載", null, (_, _) => window.OpenHistory());
         menu.Items.Add("結束", null, async (_, _) => { window.AllowClose = true; await engine.DisposeAsync(); tray.Dispose(); app.Shutdown(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => window.Reveal();
         Notifications.Preferences=()=>engine.Settings;engine.Notify += text => app.Dispatcher.BeginInvoke(() => Notifications.Show(text));
