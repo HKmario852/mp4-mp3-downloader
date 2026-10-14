@@ -46,7 +46,7 @@ Los paquetes están en **[la última versión](https://github.com/HKmario852/mp4
 | Extensión del navegador | Chrome / Brave en Windows | Carga la extensión descomprimida y conecta su ID en los ajustes de la aplicación. [Guía de conexión](../../docs/DEVELOPMENT.md#browser-connection). |
 
 > **Nota:**
-> El ejecutable de Windows no está firmado. Desde la 0.2.21 el APK de Android es una compilación de lanzamiento firmada; si instalaste una compilación de prueba (debug) anterior, desinstálala una vez antes de instalar, porque Android no actualiza entre claves de firma distintas. La verificación en dispositivos y de los servicios en segundo plano está incompleta.
+> El ejecutable de Windows no está firmado. El APK de Android es una compilación de lanzamiento firmada con la misma clave que las versiones anteriores, así que se instala encima de ellas. Solo la 0.2.21 usó otra clave: si instalaste la 0.2.21, desinstálala una vez antes de instalar una versión más reciente.
 >
 > Ambas apps mantienen yt-dlp al día entre versiones (Ajustes › Acerca de, comprobación diaria por defecto) y verifican cada descarga con el SHA-256 de GitHub.
 
@@ -78,7 +78,7 @@ Para Android también necesitas **JDK 21**, **Android SDK / build-tools 35**, **
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-Resultado: `artifacts/OmniDownloader-universal.apk` (firmado con tu clave de lanzamiento; ejecuta una vez `./scripts/Setup-AndroidSigning.ps1` para crearla) y `artifacts/OmniDownloader-universal-debug.apk`. El script también compila las pruebas de instrumentación y ejecuta las pruebas unitarias de JVM. Consulta la [guía de desarrollo](../../docs/DEVELOPMENT.md) para ver la arquitectura, las comprobaciones y el empaquetado.
+Resultado: `artifacts/OmniDownloader-universal.apk` (firmado con la misma clave que las versiones anteriores; ejecuta una vez `./scripts/Setup-AndroidSigning.ps1` para configurarla) y `artifacts/OmniDownloader-universal-debug.apk`. El script también compila las pruebas de instrumentación y ejecuta las pruebas unitarias de JVM. Consulta la [guía de desarrollo](../../docs/DEVELOPMENT.md) para ver la arquitectura, las comprobaciones y el empaquetado.
 
 ## Configuración
 

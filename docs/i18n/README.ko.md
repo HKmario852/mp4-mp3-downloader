@@ -46,7 +46,7 @@
 | 브라우저 확장 | Windows의 Chrome／Brave | 압축을 푼 확장을 로드하고 앱 설정에서 ID를 연결합니다. [설정 안내](../../docs/DEVELOPMENT.md#browser-connection). |
 
 > **참고:**
-> Windows 실행 파일은 서명되지 않았습니다. 0.2.21부터 Android APK는 서명된 릴리스 빌드입니다. 이전 테스트용(debug) 빌드를 설치했다면 Android가 서명 키가 다른 업데이트를 허용하지 않으므로 한 번 삭제한 뒤 설치하세요. 실제 기기와 백그라운드 서비스 검증은 아직 완료되지 않았습니다.
+> Windows 실행 파일은 서명되지 않았습니다. Android APK는 이전 버전과 같은 키로 서명한 릴리스 빌드라서 그대로 덮어 설치할 수 있습니다. 다른 키를 쓴 버전은 0.2.21뿐입니다. 0.2.21을 설치했다면 한 번 삭제한 뒤 새 버전을 설치하세요.
 >
 > 두 앱 모두 릴리스 사이에도 yt-dlp를 최신으로 유지합니다(설정 › 정보, 기본 매일 확인). 다운로드는 GitHub의 SHA-256으로 검증합니다.
 
@@ -78,7 +78,7 @@ Android에는 **JDK 21**, **Android SDK／build-tools 35**, **NDK 27.0.12077973*
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-출력: `artifacts/OmniDownloader-universal.apk`(릴리스 키로 서명, 먼저 `./scripts/Setup-AndroidSigning.ps1`을 한 번 실행해 생성)와 `artifacts/OmniDownloader-universal-debug.apk`. instrumentation 테스트를 빌드하고 JVM 단위 테스트도 실행합니다. 구조, 검증, 패키징은 [개발 안내](../../docs/DEVELOPMENT.md)를 참고하세요.
+출력: `artifacts/OmniDownloader-universal.apk`(이전 버전과 같은 키로 서명, 먼저 `./scripts/Setup-AndroidSigning.ps1`을 한 번 실행해 설정)와 `artifacts/OmniDownloader-universal-debug.apk`. instrumentation 테스트를 빌드하고 JVM 단위 테스트도 실행합니다. 구조, 검증, 패키징은 [개발 안내](../../docs/DEVELOPMENT.md)를 참고하세요.
 
 ## 설정
 

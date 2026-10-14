@@ -46,7 +46,7 @@
 | ブラウザー拡張機能 | Windows の Chrome／Brave | 展開した拡張機能を読み込み、アプリ設定で ID を接続。[設定手順](../../docs/DEVELOPMENT.md#browser-connection)。 |
 
 > **注意:**
-> Windows の実行ファイルは未署名です。0.2.21 以降の Android APK は署名済みのリリースビルドです。以前のテスト用（debug）ビルドを入れている場合は、Android が署名鍵をまたいで更新できないため、一度アンインストールしてからインストールしてください。実機とバックグラウンドサービスの検証は完了していません。
+> Windows の実行ファイルは未署名です。Android APK は以前のバージョンと同じ鍵で署名したリリースビルドなので、上書きインストールできます。別の鍵を使ったのは 0.2.21 だけです。0.2.21 を入れている場合は、一度アンインストールしてから新しいバージョンをインストールしてください。
 >
 > どちらのアプリもリリースの合間に yt-dlp を最新に保ちます（設定 › 情報、既定で毎日確認）。ダウンロードは GitHub の SHA-256 で検証します。
 
@@ -78,7 +78,7 @@ Android には **JDK 21**、**Android SDK／build-tools 35**、**NDK 27.0.120779
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-出力：`artifacts/OmniDownloader-universal.apk`（リリース鍵で署名。最初に `./scripts/Setup-AndroidSigning.ps1` を一度実行して作成）と `artifacts/OmniDownloader-universal-debug.apk`。instrumentation テストのビルドと JVM 単体テストも実行します。構成、検証、パッケージ作成については [開発ガイド](../../docs/DEVELOPMENT.md) を参照してください。
+出力：`artifacts/OmniDownloader-universal.apk`（以前のバージョンと同じ鍵で署名。最初に `./scripts/Setup-AndroidSigning.ps1` を一度実行して設定）と `artifacts/OmniDownloader-universal-debug.apk`。instrumentation テストのビルドと JVM 単体テストも実行します。構成、検証、パッケージ作成については [開発ガイド](../../docs/DEVELOPMENT.md) を参照してください。
 
 ## 設定
 

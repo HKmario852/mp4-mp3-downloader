@@ -46,7 +46,7 @@ Get the packages from **[the latest release](https://github.com/HKmario852/mp4-m
 | Browser extension | Chrome / Brave on Windows | Load the unpacked extension and connect its ID in app settings. [Setup guide](docs/DEVELOPMENT.md#browser-connection). |
 
 > **Note:**
-> The Windows executable is unsigned. From 0.2.21 the Android APK is a signed release build; if you installed an earlier test (debug) build, uninstall it once before installing, because Android cannot update across signing keys. Device and background-service verification is incomplete.
+> The Windows executable is unsigned. The Android APK is a release build signed with the same key as earlier versions, so it installs over them. Only 0.2.21 used a different key: if you installed 0.2.21, uninstall it once before installing a newer version.
 >
 > Both apps keep yt-dlp up to date between releases (Settings › About, checked daily by default), verifying each download against GitHub's SHA-256.
 
@@ -78,7 +78,7 @@ For Android, also install **JDK 21**, **Android SDK / build-tools 35**, **NDK 27
 ./scripts/Build-Android.ps1 -JavaHome $env:JAVA_HOME -AndroidHome $env:ANDROID_HOME
 ```
 
-Output: `artifacts/OmniDownloader-universal.apk` (signed with your release key; run `./scripts/Setup-AndroidSigning.ps1` once to create it) and `artifacts/OmniDownloader-universal-debug.apk`. The script also builds instrumentation tests and runs JVM unit tests. See [the development guide](docs/DEVELOPMENT.md) for architecture, checks, and packaging.
+Output: `artifacts/OmniDownloader-universal.apk` (signed with the key earlier versions use; run `./scripts/Setup-AndroidSigning.ps1` once to set it up) and `artifacts/OmniDownloader-universal-debug.apk`. The script also builds instrumentation tests and runs JVM unit tests. See [the development guide](docs/DEVELOPMENT.md) for architecture, checks, and packaging.
 
 ## Configuration
 

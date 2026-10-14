@@ -12,7 +12,7 @@ android {
     compileSdk = 35
     ndkVersion = "27.0.12077973"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
-    defaultConfig { applicationId = "io.hkmario.omni"; minSdk = 26; targetSdk = 35; versionCode = 26; versionName = "0.2.21"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
+    defaultConfig { applicationId = "io.hkmario.omni"; minSdk = 26; targetSdk = 35; versionCode = 27; versionName = "0.2.22"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"; ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") } }
     buildFeatures { compose = true }
     sourceSets.getByName("androidTest").assets.srcDir(providers.gradleProperty("omniTestFixtures").getOrElse("../../tests/Fixtures/audio"))
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
