@@ -14,4 +14,15 @@ class RulesTest {
     @Test fun emaIdle(){val e=Ema();assertEquals(2000.0,e.sample(1000,5000,.5,true).first,0.0);assertEquals(2500.0,e.sample(3000,5000,.5,true).first,0.0);assertEquals(0.0,e.sample(3000,5000,.5,true).first,0.0)}
     @Test fun sessionDoesNotPersist(){val a=SessionGrants();a.cellularAll=true;a.suppressUnknownSpace=true;val b=SessionGrants();assertFalse(b.mayUseCellular("a"));assertFalse(b.suppressUnknownSpace)}
     @Test fun id3EmptyFrameAndAudioRoundtrip(){val dir=kotlin.io.path.createTempDirectory("omni-id3").toFile();try{val source=File(dir,"a.mp3");val audio=byteArrayOf(-1,-5,0,1,2,3);source.writeBytes(audio);val tag=Id3.read(source);tag.setText("TIT2","夜に駆ける");tag.setText("TALB","");tag.setRaw("PRIV",byteArrayOf(1,2,3));val dest=File(dir,"b.mp3");tag.write(source,dest);val read=Id3.read(dest);assertEquals("夜に駆ける",read.text("TIT2"));assertTrue(read.frames.any{it.id=="TALB"&&it.data.isNotEmpty()});assertArrayEquals(audio,dest.readBytes().copyOfRange(read.audioOffset.toInt(),dest.length().toInt()))}finally{dir.deleteRecursively()}}
+
+    @Test fun importedCookiesAreUsedOnlyForTheirSite() {
+        val x=listOf("# Netscape HTTP Cookie File",".x.com	TRUE	/	TRUE	0	auth_token	v")
+        assertTrue(Rules.cookieFileCovers(x,"https://x.com/u/status/1"))
+        assertTrue(Rules.cookieFileCovers(x,"https://twitter.com/u/status/1"))
+        assertFalse(Rules.cookieFileCovers(x,"https://www.youtube.com/watch?v=a"))
+        val yt=listOf("#HttpOnly_.youtube.com	TRUE	/	TRUE	0	SID	v")
+        assertTrue(Rules.cookieFileCovers(yt,"https://youtu.be/a"))
+        assertFalse(Rules.cookieFileCovers(yt,"https://x.com/u/status/1"))
+        assertFalse(Rules.cookieFileCovers(listOf("# .x.com	TRUE	/	TRUE	0	c	v"),"https://x.com/u/status/1"))
+    }
 }
