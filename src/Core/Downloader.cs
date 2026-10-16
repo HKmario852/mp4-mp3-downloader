@@ -110,7 +110,7 @@ public sealed partial class Downloader : IAsyncDisposable
             var auth = new List<string>();
             if (credentials.TryGetValue(j.Id, out var cookies)) { await File.WriteAllTextAsync(cookiePath, Validation.Netscape(cookies), ct); auth.AddRange(["--cookies", cookiePath]); }
             else if (j.HadCredentials) throw new IOException("登入憑證已過期，請從擴充功能重新傳送");
-            else if(Settings.CookieFile.Length>0&&new[]{"youtube.com","www.youtube.com","m.youtube.com","youtu.be"}.Contains(new Uri(j.Url).Host)){if(!File.Exists(Settings.CookieFile))throw new IOException("Cookie 檔案不存在 / Cookie file missing");File.Copy(Settings.CookieFile,cookiePath,true);auth.AddRange(["--cookies",cookiePath]);}
+            else if(ImportedCookies(j.Url) is { } imported){File.Copy(imported,cookiePath,true);auth.AddRange(["--cookies",cookiePath]);}
             if (j.IsGroupRoot) { await RetryOperation(j,options,async()=>{await Discover(j,auth,ct);return true;},ct); return; }
             var analysisWatch=Stopwatch.StartNew();
             var info = auth.Count==0 && analysisCache.TryGetValue(j.Url,out var cached) && DateTimeOffset.UtcNow-cached.At<TimeSpan.FromMinutes(10)
@@ -175,15 +175,19 @@ public sealed partial class Downloader : IAsyncDisposable
         using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(25));
         try{return await AlbumArtwork.Source(await Analyze("https://music.youtube.com/watch?v="+id,auth,timeout.Token),timeout.Token);}catch(Exception e)when(e is DownloadException or HttpRequestException or IOException or OperationCanceledException && !ct.IsCancellationRequested){return null;}
     }
+    /// <summary>The imported cookies.txt (Settings › Network) when it signs in to this URL's site, e.g. YouTube or X.</summary>
+    string? ImportedCookies(string url)
+    {
+        if (Settings.CookieFile.Length == 0) return null;
+        if (!File.Exists(Settings.CookieFile))
+            return new[] { "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be" }.Contains(new Uri(url).Host) ? throw new IOException("Cookie 檔案不存在 / Cookie file missing") : null;
+        return Validation.CookieFileCovers(Settings.CookieFile, url) ? Settings.CookieFile : null;
+    }
     public async Task<MediaInfo> Analyze(string url, List<string>? auth = null, CancellationToken ct = default)
     {
         Validation.WebUrl(url);
         var effectiveAuth = auth;
-        if(effectiveAuth is null && Settings.CookieFile.Length > 0 && new[] { "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be" }.Contains(new Uri(url).Host))
-        {
-            if(!File.Exists(Settings.CookieFile)) throw new IOException("Cookie 檔案不存在 / Cookie file missing");
-            effectiveAuth = ["--cookies", Settings.CookieFile];
-        }
+        if(effectiveAuth is null && ImportedCookies(url) is { } imported) effectiveAuth = ["--cookies", imported];
         var text = await ProcessRunner.Run(YtDlp.ExecutablePath, new[] { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--dump-single-json", "--skip-download", "--no-warnings" }.Concat(["--cache-dir",Path.Combine(workDir,"network-cache")]).Concat(DownloadOptions.Network(Settings)).Concat(effectiveAuth ?? []).Concat(["--", url]), null, ct);
         using var doc = JsonDocument.Parse(text); var root = doc.RootElement;
         string Get(string key) => root.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString()! : "";

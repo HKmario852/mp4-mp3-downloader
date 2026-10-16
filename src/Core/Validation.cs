@@ -60,6 +60,19 @@ public static partial class Validation
             if (c.Domain.TrimStart('.') is not ("youtube.com" or "www.youtube.com" or "m.youtube.com") || !c.Path.StartsWith('/') || new[] { c.Name, c.Value, c.Domain, c.Path }.Any(s => s.Length > 8192 || s.Any(ch => ch < 32 || ch == 127))) throw new ArgumentException("無效 Cookie");
         }
     }
+    // Hosts that share one sign-in: X still accepts twitter.com links, and youtu.be links use youtube.com cookies.
+    static readonly string[][] SameSite = [["x.com", "twitter.com"], ["youtube.com", "youtu.be"]];
+    /// <summary>True when the Netscape cookie file holds a cookie for the URL's site, so yt-dlp can sign in there.</summary>
+    public static bool CookieFileCovers(string path, string url)
+    {
+        static bool Under(string host, string domain) => host == domain || host.EndsWith("." + domain, StringComparison.Ordinal);
+        var host = new Uri(url).Host.ToLowerInvariant();
+        var domains = File.ReadLines(path).Select(l => l.StartsWith("#HttpOnly_", StringComparison.Ordinal) ? l[10..] : l)
+            .Where(l => l.Length > 0 && l[0] != '#').Select(l => l.Split('\t')).Where(f => f.Length >= 7)
+            .Select(f => f[0].TrimStart('.').ToLowerInvariant()).ToHashSet();
+        var sites = SameSite.FirstOrDefault(g => g.Any(s => Under(host, s))) ?? [host];
+        return domains.Any(d => Under(host, d) || sites.Any(s => Under(s, d)));
+    }
     public static string Netscape(IEnumerable<BrowserCookie> cookies)
     {
         var s = new StringBuilder("# Netscape HTTP Cookie File\n");

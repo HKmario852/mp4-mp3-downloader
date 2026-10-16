@@ -53,6 +53,16 @@ class SessionGrants {
     fun mayUseCellular(id: String) = cellularAll || id in tasks
 }
 object Rules {
+    // Hosts that share one sign-in: X still accepts twitter.com links, and youtu.be links use youtube.com cookies.
+    private val sameSite=listOf(listOf("x.com","twitter.com"),listOf("youtube.com","youtu.be"))
+    /** True when the Netscape cookie lines hold a cookie for the URL's site, so yt-dlp can sign in there. */
+    fun cookieFileCovers(lines: List<String>, url: String): Boolean {
+        fun under(host: String, domain: String)=host==domain||host.endsWith(".$domain")
+        val host=(java.net.URI(url).host?:return false).lowercase()
+        val domains=lines.map{it.removePrefix("#HttpOnly_")}.filter{it.isNotEmpty()&&!it.startsWith("#")}.map{it.split('\t')}.filter{it.size>=7}.map{it[0].trimStart('.').lowercase()}.toSet()
+        val sites=sameSite.firstOrNull{g->g.any{under(host,it)}}?:listOf(host)
+        return domains.any{d->under(host,d)||sites.any{under(it,d)}}
+    }
     fun inQueue(t: TaskItem) = t.state in listOf(State.PendingChoice,State.Queued,State.Analyzing,State.Downloading,State.Processing,State.RetryWait,State.Paused)
     private val forbidden = Regex("[\\\\/:*?\"<>|\\x00-\\x1f]")
     private val reserved = Regex("^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\.|$)", RegexOption.IGNORE_CASE)

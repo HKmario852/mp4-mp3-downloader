@@ -142,8 +142,12 @@ class Engine(val context: Context) {
     }
     private fun applyCookies(request:YoutubeDLRequest,url:String,id:String):File? {
         val p=prefs.value;request.addOption("--cache-dir",File(context.cacheDir,"network").absolutePath)
-        if(p.cookieFile.isBlank()||java.net.URI(url).host !in listOf("youtube.com","www.youtube.com","m.youtube.com","youtu.be"))return null
-        require(Regex("^[a-zA-Z0-9-]+$").matches(id));val source=File(p.cookieFile);require(source.isFile){"Cookie file missing"}
+        if(p.cookieFile.isBlank())return null
+        val source=File(p.cookieFile)
+        // Only YouTube reports a missing file, as before; other sites just download without signing in
+        if(!source.isFile){require(java.net.URI(url).host !in listOf("youtube.com","www.youtube.com","m.youtube.com","youtu.be")){"Cookie file missing"};return null}
+        if(!Rules.cookieFileCovers(source.readLines(),url))return null
+        require(Regex("^[a-zA-Z0-9-]+$").matches(id))
         val dir=File(context.cacheDir,"auth").apply{mkdirs()};val jar=File(dir,"$id.txt");source.copyTo(jar,true);request.addOption("--cookies",jar.absolutePath);return jar
     }
 
@@ -154,6 +158,6 @@ class Engine(val context: Context) {
     suspend fun renameDownloaded(id:String,name:String)=withContext(Dispatchers.IO){require(name.isNotBlank()&&Rules.titleError(name)==null){Rules.titleError(name)?:"Filename required"};val t=get(id);require(t.state==State.Completed);val path=t.path?:error("File missing");val newPath=if(path.startsWith("content://")){val doc=androidx.documentfile.provider.DocumentFile.fromSingleUri(context,Uri.parse(path))?:error("File missing");check(doc.renameTo(name+"."+t.extension)){"Cannot rename file"};doc.uri.toString()}else{val source=File(path);val target=File(source.parentFile,name+"."+t.extension);require(!target.exists()){"Filename already exists"};check(source.renameTo(target)){"Cannot rename file"};target.absolutePath};tasks.value.filter{it.path==path}.forEach{row->update(row.id){it.copy(path=newPath)}}}
     companion object {
         fun redact(s: String)=s.replace(Regex("https?://\\S+|(?i)(cookie|authorization|token)\\s*[:=].*"),"[已隱藏敏感資料]")
-        fun diagnose(s: String)=if(s.contains("Requested format is not available",true))"來源沒有所選格式的原生音訊，請改選 MP3／FLAC；未進行有損降級。"else if(s.contains("confirm your age",true))"影片需要 YouTube 登入及年齡確認。請先用你自己的帳號在瀏覽器完成確認，再於設定 → 網絡匯入該帳號的 Netscape cookies.txt，儲存後重試。只更新 yt-dlp 無法解除這項限制。"else if(s.contains("403")||s.contains("Sign in",true))"網站要求登入或拒絕存取。可於網絡設定匯入自己的 Cookie；如開啟 VPN，請檢查地區及出口連線。"else if(s.contains("space",true))"儲存空間不足，請釋放空間或選擇另一個目錄。"else "下載失敗，請檢查網路及影片可用性；原始診斷可匯出分享。"
+        fun diagnose(s: String)=if(s.contains("Requested format is not available",true))"來源沒有所選格式的原生音訊，請改選 MP3／FLAC；未進行有損降級。"else if(s.contains("confirm your age",true))"影片需要 YouTube 登入及年齡確認。請先用你自己的帳號在瀏覽器完成確認，再於設定 → 網絡匯入該帳號的 Netscape cookies.txt，儲存後重試。只更新 yt-dlp 無法解除這項限制。"else if(s.contains("requires authentication",true)||s.contains("--cookies")||s.contains("NSFW",true)||s.contains("age-restricted",true))"內容需要登入先可以睇（例如 X 嘅敏感或年齡限制帖文）。請用自己帳號喺瀏覽器登入該網站，匯出 Netscape cookies.txt，再喺設定 → 網絡匯入。"else if(s.contains("403")||s.contains("Sign in",true))"網站要求登入或拒絕存取。可於網絡設定匯入自己的 Cookie；如開啟 VPN，請檢查地區及出口連線。"else if(s.contains("space",true))"儲存空間不足，請釋放空間或選擇另一個目錄。"else "下載失敗，請檢查網路及影片可用性；原始診斷可匯出分享。"
     }
 }
