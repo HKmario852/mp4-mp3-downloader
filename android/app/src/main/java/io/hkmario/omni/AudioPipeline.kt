@@ -19,7 +19,22 @@ object AudioPipeline {
   if(format=="mp3"){a.add("--audio-quality" to if(p.mp3Encoding=="v0")"0"else "${kbps}k");a.add("--postprocessor-args" to "Metadata+ffmpeg_o:-id3v2_version ${p.id3Version}")}
   return a
  }
- fun quality(format:String,p:Prefs,kbps:Int)=when(format){"opus","m4a"->"原生音訊 / Native audio";"flac","wav"->"無損轉檔 / Lossless conversion";else->if(p.mp3Encoding=="v0")"VBR V0"else "$kbps kbps"}
+ fun quality(format:String,p:Prefs,kbps:Int)=when(format){"opus","m4a"->"原生音訊 / Native audio";"flac","wav"->"無損格式（音質以來源為準） / Lossless container (quality follows the source)";else->if(p.mp3Encoding=="v0")"VBR V0"else "$kbps kbps"}
+ /** yt-dlp output template for the audio track it actually downloads (written with --print-to-file before_dl). */
+ const val sourceTemplate="%(format_id)s|%(acodec)s|%(abr)s|%(asr)s"
+ data class SourceAudio(val codec:String,val kbps:Double?,val sampleRate:Int?,val formatId:String)
+ fun parseSource(line:String?):SourceAudio?{
+  val f=(line?:"").trim().split('|');if(f.size<4||f[1] in listOf("","NA","none"))return null
+  return SourceAudio(f[1],f[2].toDoubleOrNull()?.takeIf{it>0},f[3].toIntOrNull()?.takeIf{it>0},f[0])
+ }
+ fun codecName(codec:String)=codec.lowercase().let{c->when{c=="opus"->"Opus";c=="vorbis"->"Vorbis";c=="mp3"->"MP3";c=="flac"->"FLAC";c=="alac"->"ALAC";c.startsWith("mp4a")||c=="aac"->"AAC";else->c.uppercase()}}
+ /** e.g. "Opus · 160 kbps · 48 kHz". */
+ fun sourceText(codec:String,kbps:Double?,sampleRate:Int?)=listOfNotNull(codecName(codec),kbps?.takeIf{it>0}?.let{"${Math.round(it)} kbps"},sampleRate?.takeIf{it>0}?.let{java.text.DecimalFormat("0.#").format(it/1000.0)+" kHz"}).joinToString(" · ")
+ /** A note when a lossy output asks for clearly more bitrate than the source had; it cannot add quality. */
+ fun upscaleNote(format:String,mp3Encoding:String?,targetKbps:Int,sourceKbps:Double?):String?{
+  if(format!="mp3"||sourceKbps==null||sourceKbps<=0||mp3Encoding=="v0"||targetKbps<=sourceKbps*1.15)return null
+  val s=Math.round(sourceKbps);return "輸出 $targetKbps kbps 高於來源 $s kbps，音質以來源為準 / $targetKbps kbps output is above the $s kbps source; quality follows the source"
+ }
  suspend fun validate(file:File,expected:Double?)=withContext(Dispatchers.IO){
   val extractor=MediaExtractor()
   try{

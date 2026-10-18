@@ -25,9 +25,34 @@ public static class AudioPipeline
     }
     public static string Quality(string format, Preferences? p, int kbps) => format switch {
         "opus" or "m4a" => "原生音訊 / Native audio",
-        "flac" or "wav" => "無損轉檔 / Lossless conversion",
+        "flac" or "wav" => "無損格式（音質以來源為準） / Lossless container (quality follows the source)",
         _ => p?.Mp3Encoding == "v0" ? "VBR V0" : $"{kbps} kbps"
     };
+    /// <summary>yt-dlp output template for the audio track it actually downloads (written with --print-to-file before_dl).</summary>
+    public const string SourceTemplate = "%(format_id)s|%(acodec)s|%(abr)s|%(asr)s";
+    public sealed record SourceAudio(string Codec, double? Kbps, int? SampleRate, string FormatId);
+    /// <summary>Parses one line written with <see cref="SourceTemplate"/>; null when it holds no usable codec.</summary>
+    public static SourceAudio? ParseSource(string? line)
+    {
+        var f = (line ?? "").Trim().Split('|');
+        if (f.Length < 4 || f[1] is "" or "NA" or "none") return null;
+        double? kbps = double.TryParse(f[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var k) && k > 0 ? k : null;
+        int? rate = int.TryParse(f[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var r) && r > 0 ? r : null;
+        return new(f[1], kbps, rate, f[0]);
+    }
+    public static string CodecName(string codec) => codec.ToLowerInvariant() switch {
+        "opus" => "Opus", "vorbis" => "Vorbis", "mp3" => "MP3", "flac" => "FLAC", "alac" => "ALAC",
+        var c when c.StartsWith("mp4a") || c == "aac" => "AAC", var c => c.ToUpperInvariant()
+    };
+    /// <summary>e.g. "Opus · 160 kbps · 48 kHz".</summary>
+    public static string SourceText(string codec, double? kbps, int? sampleRate) => string.Join(" · ",
+        new[] { CodecName(codec), kbps is > 0 ? $"{Math.Round(kbps.Value)} kbps" : null, sampleRate is > 0 ? $"{sampleRate / 1000.0:0.#} kHz" : null }.Where(s => s is not null));
+    /// <summary>A note when a lossy output asks for clearly more bitrate than the source had; it cannot add quality.</summary>
+    public static string? UpscaleNote(string format, Preferences? p, int targetKbps, double? sourceKbps)
+    {
+        if (format != "mp3" || sourceKbps is not > 0 || p?.Mp3Encoding == "v0" || targetKbps <= sourceKbps * 1.15) return null;
+        return $"輸出 {targetKbps} kbps 高於來源 {Math.Round(sourceKbps.Value)} kbps，音質以來源為準 / {targetKbps} kbps output is above the {Math.Round(sourceKbps.Value)} kbps source; quality follows the source";
+    }
     // Check the actual codec/header/duration, then decode audio before publishing.
     // Opus pre-skip and AAC encoder delay can produce legitimate negative first PTS.
     public static async Task Validate(string file, string ffmpeg, double? expected, CancellationToken ct)

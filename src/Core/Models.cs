@@ -52,6 +52,12 @@ public sealed class DownloadJob
     public JobState State { get; set; } = JobState.Queued;
     public int Height { get; set; }
     public int AudioKbps { get; set; }
+    // The audio track yt-dlp actually downloaded (audio jobs only; empty for older records)
+    public string? SourceCodec { get; set; }
+    public double? SourceKbps { get; set; }
+    public int? SourceSampleRate { get; set; }
+    [JsonIgnore] public string? SourceText => SourceCodec is null ? null : AudioPipeline.SourceText(SourceCodec, SourceKbps, SourceSampleRate);
+    [JsonIgnore] public string? UpscaleNote => AudioPipeline.UpscaleNote(Extension, Options, AudioKbps, SourceKbps);
     public string Directory { get; set; } = "";
     public string? FilePath { get; set; }
     public double Progress { get; set; }

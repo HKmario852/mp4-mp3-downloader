@@ -9,6 +9,8 @@ import java.util.UUID
     val mp3Encoding:String?=null,val id3Version:Int?=null,val pendingMetadata:Boolean=false,
     val outputFormat: String = "", val workPath: String? = null, val duration: Double? = null,
     val mode: String = "mp4", val height: Int = 1080, val kbps: Int = 320,
+    // The audio track yt-dlp actually downloaded (audio tasks only; empty for older records)
+    val sourceCodec: String? = null, val sourceKbps: Double? = null, val sourceSampleRate: Int? = null,
     val state: State = State.Queued, val groupId: String? = null, val groupRoot: Boolean = false,
     val artist: String = "", val album: String = "", val thumbnail: String? = null,
     val path: String? = null, val targetTree: String? = null, val directory: String = "", val bytes: Long = 0, val total: Long? = null,

@@ -86,6 +86,7 @@ fun folder(engine:Engine,t:TaskItem){val uri=if(t.directory.startsWith("content:
    text={Column(Modifier.heightIn(max=480.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
     AsyncImage(t.thumbnail,null,Modifier.fillMaxWidth().height(170.dp));Text(t.title,fontWeight=FontWeight.Bold)
     Text("${t.extension.uppercase()} · ${quality(t)} · ${size(t)}");Text(finished(t));Text(text(p,"✓ 已完成","✓ Completed"))
+    t.sourceCodec?.let{Text(text(p,"來源音質　","Source audio  ")+AudioPipeline.sourceText(it,t.sourceKbps,t.sourceSampleRate))};AudioPipeline.upscaleNote(t.extension,t.mp3Encoding,t.kbps,t.sourceKbps)?.let{n->Text(text(p,n.substringBefore(" / "),n.substringAfter(" / ")),fontSize=12.sp,color=Muted)}
     Text(t.artist);Text(t.album);Text(t.path?:"",fontSize=12.sp);Text(t.url,fontSize=12.sp)
     TextButton(onClick={runCatching{folder(engine,t)}.onFailure{message=it.message}}){Text(text(p,"開啟檔案位置","Show in folder"))}
    }},
