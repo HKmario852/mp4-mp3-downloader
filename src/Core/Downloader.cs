@@ -220,11 +220,14 @@ public sealed partial class Downloader : IAsyncDisposable
     {
         j.State = JobState.Downloading; var args = new List<string> { "--ignore-config", "--js-runtimes", "deno:" + Path.Combine(binaryDir, "deno.exe"), "--no-playlist", "--newline", "--continue", "--no-warnings", "--progress-delta", "0.5", "--progress-template", "download:OMNI:%(progress.downloaded_bytes)s|%(progress.total_bytes,progress.total_bytes_estimate)s", "--ffmpeg-location", binaryDir, "-o", Path.Combine(work, "media.%(ext)s") };
         args.AddRange(DownloadOptions.Format(j,j.Options??Settings,info)); args.AddRange(DownloadOptions.Network(Settings)); args.AddRange(["--cache-dir",Path.Combine(workDir,"network-cache")]);
+        var sourceFile = Path.Combine(work, "source.txt"); if (j.Mode == DownloadMode.Mp3) { File.Delete(sourceFile); args.AddRange(["--print-to-file", "before_dl:" + AudioPipeline.SourceTemplate, sourceFile]); }
         args.AddRange(auth); args.AddRange(["--", j.Url]); var ema = new SpeedEma(); var watch = Stopwatch.StartNew(); long previous = 0;
         using var sampleCt = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var sampler = Task.Run(async () => { using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500)); try { while (await timer.WaitForNextTickAsync(sampleCt.Token)) { var now = watch.ElapsedMilliseconds; var speed = ema.Sample(j.Bytes, j.TotalBytes, (now - previous) / 1000.0, j.State == JobState.Downloading); previous = now; j.Speed = speed.speed; j.Eta = speed.eta; } } catch (OperationCanceledException) { } });
         try { await ProcessRunner.Run(YtDlp.ExecutablePath, args, line => { if (!line.StartsWith("OMNI:")) return; var fields = line[5..].Split('|'); if (long.TryParse(fields[0], out var b)) j.Bytes = b; if (fields.Length > 1 && long.TryParse(fields[1], out var total)) j.TotalBytes = total; j.Progress = j.TotalBytes > 0 ? Math.Min(100, 100.0 * j.Bytes / j.TotalBytes.Value) : 0; }, ct); }
         finally { sampleCt.Cancel(); await sampler; }
+        // Record the audio track yt-dlp actually used, so the library can show the real source quality
+        if (j.Mode == DownloadMode.Mp3 && File.Exists(sourceFile) && AudioPipeline.ParseSource(File.ReadLines(sourceFile).LastOrDefault()) is { } source) { j.SourceCodec = source.Codec; j.SourceKbps = source.Kbps; j.SourceSampleRate = source.SampleRate; store.Save(j); }
     }
     public async Task Pause(string id)
     {

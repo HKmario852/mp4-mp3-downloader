@@ -101,10 +101,13 @@ class Engine(val context: Context) {
         update(id){it.copy(state=State.Downloading)};val t=get(id);val request=YoutubeDLRequest(t.url)
         request.addOption("--ignore-config");request.addOption("--no-playlist");request.addOption("--continue");request.addOption("--newline");request.addOption("--progress-delta","0.5");request.addOption("-o",File(work,"media.%(ext)s").absolutePath)
         Options.apply(request,networkOptions());Options.apply(request,Options.format(t,prefs.value));val jar=applyCookies(request,t.url,id)
+        val sourceFile=File(work,"source.txt");if(t.mode=="mp3"){sourceFile.delete();request.addCommands(listOf("--print-to-file","before_dl:"+AudioPipeline.sourceTemplate,sourceFile.absolutePath))}
         val ema=Ema();var previous=android.os.SystemClock.elapsedRealtime()
         val sampler=launch { while(isActive){delay(500);val now=android.os.SystemClock.elapsedRealtime();val bytes=work.listFiles()?.filter{it.extension in listOf("part","mp4","m4a","webm","mp3","opus","flac","wav")}?.sumOf{it.length()}?:0;val task=get(id);val estimate=if(task.progress>0)(bytes*100/task.progress).toLong()else null;val(speed,eta)=ema.sample(bytes,estimate,(now-previous)/1000.0,task.state==State.Downloading);previous=now;update(id){it.copy(bytes=bytes,total=estimate,speed=speed,eta=eta)}} }
         try { runInterruptible(Dispatchers.IO){YoutubeDL.getInstance().execute(request,id){progress,_,_->update(id){it.copy(progress=progress.coerceIn(0f,100f))}}} }
         finally {sampler.cancelAndJoin();jar?.delete()}
+        // Record the audio track yt-dlp actually used, so the library can show the real source quality
+        if(t.mode=="mp3"&&sourceFile.isFile)AudioPipeline.parseSource(sourceFile.readLines().lastOrNull())?.let{s->update(id){it.copy(sourceCodec=s.codec,sourceKbps=s.kbps,sourceSampleRate=s.sampleRate)}}
     }
     private fun startEnrichment(id:String){synchronized(enriching){if(enriching.values.any{it.isActive})return;enriching[id]=scope.launch{
         try{
