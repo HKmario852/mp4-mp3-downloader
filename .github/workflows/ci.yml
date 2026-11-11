@@ -31,7 +31,7 @@ jobs:
       - name: Build Windows app
         shell: pwsh
         run: ./scripts/Build-Windows.ps1 -SkipTools
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: omni-windows-x64-no-tools
           path: artifacts/windows-win-x64
@@ -66,7 +66,7 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew testDebugUnitTest assembleRelease --console=plain
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: omni-android-apk
           path: android/app/build/outputs/apk/release/*.apk
